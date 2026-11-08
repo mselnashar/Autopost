@@ -1,7 +1,7 @@
 
 const PAGE_ID = "282216368809712";
 const GRAPH_VERSION = "v27.0";
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-3.8-flash";
 
 const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
