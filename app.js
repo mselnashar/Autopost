@@ -376,3 +376,352 @@
   });
 
 })();
+/* أقوال Reels Studio — استوديو إنشاء الريلز */
+(() => {
+"use strict";
+
+if (document.getElementById("aqwalReelsStudio")) return;
+
+const main = document.querySelector("main");
+if (!main) return;
+
+const section = document.createElement("section");
+section.id = "aqwalReelsStudio";
+section.className = "card";
+
+section.innerHTML = `
+<div class="head">
+<h2>استوديو الريلز المجاني</h2>
+<span class="tag">تجريبي</span>
+</div>
+
+<p class="muted">اكتب كل مشهد في سطر مستقل، وسيحوّلها الاستوديو إلى فيديو رأسي متحرك.</p>
+
+<label>عنوان الريل</label>
+<input id="reelTitle" maxlength="90" placeholder="مثلاً: معلومة تاريخية ستفاجئك">
+
+<label>نص المشاهد — كل مشهد في سطر</label>
+<textarea id="reelScenes" style="min-height:150px"
+placeholder="هل تعلم أن...؟
+المشهد الثاني...
+المشهد الثالث...
+معلومة تستحق المشاركة!"></textarea>
+
+<div class="grid">
+<div>
+<label>مدة الفيديو</label>
+<select id="reelDuration">
+<option value="30">30 ثانية</option>
+<option value="40" selected>40 ثانية</option>
+<option value="45">45 ثانية</option>
+</select>
+</div>
+
+<div>
+<label>نمط العرض</label>
+<select id="reelStyle">
+<option value="purple">أقوال — بنفسجي</option>
+<option value="dark">داكن</option>
+<option value="light">فاتح</option>
+</select>
+</div>
+</div>
+
+<div class="actions">
+<button class="primary" id="reelPreviewBtn">معاينة الريل</button>
+<button class="secondary" id="reelExportBtn" disabled>تصدير الفيديو WebM</button>
+</div>
+
+<div id="reelMessage" class="status">
+أدخل عنواناً ومشاهد ثم اضغط معاينة.
+</div>
+
+<div style="max-width:270px;margin:12px auto;background:#171321;border-radius:16px;padding:7px">
+<canvas id="reelCanvas" width="540" height="960"
+style="display:block;width:100%;height:auto;border-radius:11px;background:#302052">
+</canvas>
+</div>
+
+<p class="muted">
+فيديو رأسي 9:16. الإصدار الأول بلا صور خارجية أو تعليق صوتي.
+يعتمد التصدير على دعم المتصفح لصيغة WebM.
+</p>
+`;
+
+const footer = main.querySelector(".footer");
+main.insertBefore(section, footer || null);
+
+const $ = id => document.getElementById(id);
+const canvas = $("reelCanvas");
+const ctx = canvas.getContext("2d");
+
+let scenes = [];
+let title = "";
+let duration = 40;
+let raf = 0;
+let startedAt = 0;
+let previewing = false;
+
+function wrap(text, width, font) {
+    ctx.font = font;
+    const words = text.split(/\s+/);
+    const lines = [];
+    let line = "";
+
+    for (const word of words) {
+        const test = line ? line + " " + word : word;
+
+        if (ctx.measureText(test).width > width && line) {
+            lines.push(line);
+            line = word;
+        } else {
+            line = test;
+        }
+    }
+
+    if (line) lines.push(line);
+    return lines;
+}
+
+function draw(sec) {
+    const palettes = {
+        purple: ["#211438", "#6845a3", "#c6a7f4"],
+        dark: ["#10131f", "#28334e", "#8fb8ff"],
+        light: ["#f6f0ff", "#d9c8f4", "#6845a3"]
+    };
+
+    const [c1, c2, accent] = palettes[$("reelStyle").value];
+
+    const g = ctx.createLinearGradient(0, 0, 540, 960);
+    g.addColorStop(0, c1);
+    g.addColorStop(1, c2);
+
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 540, 960);
+
+    ctx.globalAlpha = .13;
+    ctx.fillStyle = accent;
+
+    ctx.beginPath();
+    ctx.arc(80 + Math.sin(sec) * 18, 170, 120, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(480, 760, 180, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 1;
+
+    ctx.textAlign = "center";
+    ctx.direction = "rtl";
+    ctx.fillStyle = accent;
+    ctx.font = "bold 28px Arial";
+    ctx.fillText("أقــــوال", 270, 105);
+
+    const fg = $("reelStyle").value === "light"
+        ? "#29213a"
+        : "#ffffff";
+
+    ctx.fillStyle = fg;
+
+    let y = 220;
+
+    wrap(
+        title || "معلومة تستحق المعرفة",
+        430,
+        "bold 38px Arial"
+    ).slice(0, 3).forEach(line => {
+        ctx.font = "bold 38px Arial";
+        ctx.fillText(line, 270, y);
+        y += 54;
+    });
+
+    const idx = Math.min(
+        scenes.length - 1,
+        Math.floor(sec / (duration / Math.max(1, scenes.length)))
+    );
+
+    const lines = wrap(
+        scenes[idx] || "اكتب مشاهد الريل",
+        430,
+        "bold 39px Arial"
+    );
+
+    const lineHeight = 62;
+    const startY = 500 - (lines.length - 1) * lineHeight / 2;
+
+    ctx.fillStyle = fg;
+    ctx.font = "bold 39px Arial";
+
+    lines.slice(0, 6).forEach((line, i) => {
+        ctx.fillText(line, 270, startY + i * lineHeight);
+    });
+
+    ctx.fillStyle = accent;
+    ctx.fillRect(55, 835, 430, 5);
+
+    ctx.fillRect(
+        55,
+        835,
+        430 * Math.max(0, Math.min(1, sec / duration)),
+        5
+    );
+
+    ctx.fillStyle = fg;
+    ctx.font = "24px Arial";
+    ctx.fillText("تابعنا للمزيد من المعلومات", 270, 890);
+}
+
+function msg(text, error = false) {
+    $("reelMessage").textContent = text;
+    $("reelMessage").className = "status" + (error ? " err" : " ok");
+}
+
+function stop() {
+    previewing = false;
+    cancelAnimationFrame(raf);
+}
+
+function animate() {
+    if (!previewing) return;
+
+    const s = (performance.now() - startedAt) / 1000;
+
+    if (s >= duration) {
+        stop();
+        draw(duration);
+        msg("انتهت المعاينة. يمكنك تصدير الفيديو.");
+        return;
+    }
+
+    draw(s);
+    raf = requestAnimationFrame(animate);
+}
+
+$("reelPreviewBtn").onclick = () => {
+    title = $("reelTitle").value.trim();
+
+    scenes = $("reelScenes").value
+        .split(/\n+/)
+        .map(x => x.trim())
+        .filter(Boolean);
+
+    duration = +$("reelDuration").value;
+
+    if (!title || scenes.length < 2) {
+        msg("أدخل عنواناً ومشهدين على الأقل، كل مشهد في سطر.", true);
+        return;
+    }
+
+    stop();
+
+    $("reelExportBtn").disabled = false;
+
+    startedAt = performance.now();
+    previewing = true;
+
+    msg("تعمل المعاينة الآن...");
+    animate();
+};
+
+$("reelStyle").onchange = () => draw(0);
+
+$("reelExportBtn").onclick = () => {
+
+    if (!scenes.length) {
+        msg("أنشئ المعاينة أولاً.", true);
+        return;
+    }
+
+    if (!canvas.captureStream || !window.MediaRecorder) {
+        msg("المتصفح لا يدعم تصدير الفيديو. جرّب Chrome المحدث.", true);
+        return;
+    }
+
+    const btn = $("reelExportBtn");
+    btn.disabled = true;
+
+    stop();
+
+    const stream = canvas.captureStream(30);
+
+    const mime = [
+        "video/webm;codecs=vp9",
+        "video/webm;codecs=vp8",
+        "video/webm"
+    ].find(x => MediaRecorder.isTypeSupported(x));
+
+    if (!mime) {
+        stream.getTracks().forEach(t => t.stop());
+        btn.disabled = false;
+        msg("ترميز WebM غير مدعوم.", true);
+        return;
+    }
+
+    const chunks = [];
+
+    try {
+        const rec = new MediaRecorder(stream, {
+            mimeType: mime
+        });
+
+        rec.ondataavailable = e => {
+            if (e.data.size) chunks.push(e.data);
+        };
+
+        rec.onerror = () => {
+            stream.getTracks().forEach(t => t.stop());
+            btn.disabled = false;
+            msg("حدث خطأ أثناء التسجيل.", true);
+        };
+
+        rec.onstop = () => {
+            stream.getTracks().forEach(t => t.stop());
+
+            const blob = new Blob(chunks, { type: mime });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+
+            link.href = url;
+            link.download = "aqwal-reel.webm";
+
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            setTimeout(() => URL.revokeObjectURL(url), 30000);
+
+            btn.disabled = false;
+            msg("تم تجهيز الفيديو. ابحث عنه في مجلد التنزيلات.");
+        };
+
+        rec.start();
+
+        const start = performance.now();
+
+        function render() {
+            const s = (performance.now() - start) / 1000;
+
+            draw(Math.min(s, duration));
+
+            if (s < duration && rec.state === "recording") {
+                requestAnimationFrame(render);
+            } else if (rec.state === "recording") {
+                rec.stop();
+            }
+        }
+
+        render();
+
+        msg("جاري تسجيل الفيديو. اترك الصفحة مفتوحة حتى يكتمل التصدير.");
+
+    } catch (e) {
+        stream.getTracks().forEach(t => t.stop());
+        btn.disabled = false;
+        msg("تعذر التصدير: " + e.message, true);
+    }
+};
+
+draw(0);
+
+})();
