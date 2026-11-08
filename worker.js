@@ -1,7 +1,7 @@
 
 const PAGE_ID = "282216368809712";
 const GRAPH_VERSION = "v27.0";
-const AI_MODEL = "gpt-4.1-mini";
+const GEMINI_MODEL = "gemini-2.5-flash";
 
 const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -11,7 +11,7 @@ const html = `<!DOCTYPE html>
 <title>مدير أقوال</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#f5f3fa;color:#29243b;font-family:Arial}
+body{margin:0;background:#f5f3fa;color:#29243b;font-family:Arial,sans-serif}
 header{background:#38245f;color:white;padding:25px 18px}
 header h1{margin:0 0 8px;font-size:28px}
 main{max-width:720px;margin:auto;padding:14px}
@@ -70,7 +70,7 @@ small{color:#777}
 <div class="card">
 <h2>إعدادات الإدارة</h2>
 <input id="admin" type="password" placeholder="مفتاح إدارة البوت">
-<small>المفتاح محفوظ في Cloudflare Secret باسم ADMIN_KEY.</small>
+<small>أدخل مفتاح الإدارة الموجود في Cloudflare.</small>
 </div>
 
 <div class="card">
@@ -80,34 +80,41 @@ small{color:#777}
 <small>الجدولة التلقائية لم تُفعّل بعد.</small>
 </div>
 </main>
+
 <script>
 async function call(path,method="GET",body=null){
  const key=document.getElementById("admin").value;
  const r=await fetch(path,{
   method,
-  headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},
+  headers:{
+   "Authorization":"Bearer "+key,
+   "Content-Type":"application/json"
+  },
   body:body?JSON.stringify(body):undefined
  });
  const d=await r.json();
  if(!r.ok) throw new Error(d.error||"حدث خطأ");
  return d;
 }
+
 async function check(){
  const s=document.getElementById("status");
  s.textContent="جاري الفحص...";
  try{
   const d=await call("/api/status");
-s.textContent=d.ok
- ? "متصل بصفحة "+d.page
- : "خطأ Facebook: "+(d.error||"سبب غير معروف");
+  s.textContent=d.ok?"متصل بصفحة "+d.page:"خطأ Facebook: "+(d.error||"غير معروف");
  }catch(e){s.textContent=e.message;}
 }
+
 async function generate(){
  const topic=document.getElementById("topic").value.trim();
  const category=document.getElementById("category").value;
  const out=document.getElementById("airesult");
+
  if(!topic){out.textContent="اكتب موضوع المنشور أولاً";return;}
- out.textContent="الذكاء الاصطناعي يكتب المحتوى الآن...";
+
+ out.textContent="Gemini يكتب المحتوى الآن...";
+
  try{
   const d=await call("/api/generate","POST",{topic,category});
   out.textContent="تم إنشاء المسودة وحفظها بنجاح.";
@@ -115,13 +122,17 @@ async function generate(){
   await loadDrafts();
  }catch(e){out.textContent="تعذر التوليد: "+e.message;}
 }
+
 async function loadDrafts(){
  const box=document.getElementById("drafts");
  box.textContent="جاري تحميل المسودات...";
  try{
   const d=await call("/api/drafts");
   box.innerHTML="";
-  if(!d.items.length){box.textContent="لا توجد مسودات حالياً";return;}
+  if(!d.items.length){
+   box.textContent="لا توجد مسودات حالياً";
+   return;
+  }
   d.items.forEach(p=>{
    const div=document.createElement("div");
    div.className="post";
@@ -132,7 +143,9 @@ async function loadDrafts(){
    const edit=document.createElement("button");
    edit.textContent="تعديل في المحرر";
    edit.className="secondary";
-   edit.onclick=()=>{document.getElementById("message").value=p.content;};
+   edit.onclick=()=>{
+    document.getElementById("message").value=p.content;
+   };
    const pub=document.createElement("button");
    pub.textContent="نشر هذه المسودة";
    pub.onclick=()=>publishDraft(p.id);
@@ -141,6 +154,7 @@ async function loadDrafts(){
   });
  }catch(e){box.textContent=e.message;}
 }
+
 async function publishDraft(id){
  if(!confirm("هل تريد نشر هذه المسودة على صفحة أقوال؟"))return;
  try{
@@ -149,12 +163,15 @@ async function publishDraft(id){
   await loadDrafts();
  }catch(e){alert("فشل النشر: "+e.message);}
 }
+
 async function publishText(){
  const message=document.getElementById("message").value.trim();
  if(!message){alert("اكتب نص المنشور");return;}
  if(!confirm("هل تريد نشر هذا المحتوى فعلياً؟"))return;
+
  const out=document.getElementById("publishResult");
  out.textContent="جاري النشر...";
+
  try{
   const d=await call("/api/publish","POST",{message});
   out.textContent="تم النشر بنجاح. رقم المنشور: "+d.id;
@@ -168,153 +185,252 @@ function json(data,status=200){
  return Response.json(data,{status});
 }
 
-function getText(data){
- for(const item of data.output||[]){
-  if(item.type==="message"){
-   for(const c of item.content||[]){
-    if(c.type==="output_text") return c.text;
-   }
-  }
- }
- return "";
-}
-
 export default {
  async fetch(request,env){
   const url=new URL(request.url);
 
   if(url.pathname==="/" && request.method==="GET"){
-   return new Response(html,{headers:{"Content-Type":"text/html; charset=utf-8"}});
+   return new Response(html,{
+    headers:{"Content-Type":"text/html; charset=utf-8"}
+   });
   }
 
-  if(!url.pathname.startsWith("/api/")) return new Response("Not Found",{status:404});
+  if(!url.pathname.startsWith("/api/")){
+   return new Response("Not Found",{status:404});
+  }
 
   const auth=request.headers.get("Authorization");
+
   if(!env.ADMIN_KEY || auth!=="Bearer "+env.ADMIN_KEY){
    return json({ok:false,error:"مفتاح الإدارة غير صحيح"},401);
   }
 
-  if(!env.DB) return json({ok:false,error:"قاعدة البيانات DB غير مربوطة"},500);
+  if(!env.DB){
+   return json({ok:false,error:"قاعدة البيانات DB غير مربوطة"},500);
+  }
 
   if(url.pathname==="/api/status" && request.method==="GET"){
    try{
-    if(!env.PAGE_ACCESS_TOKEN) throw new Error("PAGE_ACCESS_TOKEN غير موجود");
-    const u=new URL("https://graph.facebook.com/"+GRAPH_VERSION+"/"+PAGE_ID);
+    if(!env.PAGE_ACCESS_TOKEN){
+     throw new Error("PAGE_ACCESS_TOKEN غير موجود");
+    }
+
+    const u=new URL(
+     "https://graph.facebook.com/"+GRAPH_VERSION+"/"+PAGE_ID
+    );
+
     u.searchParams.set("fields","id,name");
     u.searchParams.set("access_token",env.PAGE_ACCESS_TOKEN);
+
     const r=await fetch(u);
     const d=await r.json();
-    if(!r.ok) return json({ok:false,error:d.error?.message||"Facebook API error"});
+
+    if(!r.ok){
+     return json({
+      ok:false,
+      error:d.error?.message||"Facebook API error"
+     });
+    }
+
     return json({ok:true,page:d.name,id:d.id});
-   }catch(e){return json({ok:false,error:e.message},500);}
+
+   }catch(e){
+    return json({ok:false,error:e.message},500);
+   }
   }
 
+  // إنشاء المحتوى باستخدام Gemini وحفظه في D1
   if(url.pathname==="/api/generate" && request.method==="POST"){
    try{
-    if(!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY غير موجود");
+    if(!env.GEMINI_API_KEY){
+     throw new Error("GEMINI_API_KEY غير موجود في Cloudflare");
+    }
+
     const body=await request.json();
     const topic=String(body.topic||"").trim().slice(0,300);
     const category=String(body.category||"محتوى ثقافي").slice(0,100);
-    if(!topic) return json({ok:false,error:"اكتب موضوع المنشور"},400);
+
+    if(!topic){
+     return json({ok:false,error:"اكتب موضوع المنشور"},400);
+    }
 
     const prompt=
      "أنت محرر صفحة أقوال العربية المتخصصة في الثقافة والتاريخ والقصص. "+
-     "اكتب منشوراً عربياً جذاباً وسلساً باللهجة العربية الفصحى المبسطة. "+
+     "اكتب منشوراً عربياً جذاباً وسلساً بالفصحى المبسطة. "+
      "نوع المحتوى: "+category+". الموضوع: "+topic+". "+
-     "اجعل النص مناسباً لفيسبوك، بعنوان جذاب وفقرات قصيرة. "+
-     "لا تختلق تواريخ أو اقتباسات أو وقائع. إذا لم تكن متأكداً من معلومة تاريخية فلا تجزم بها. "+
-     "لا تنسب قولاً لشخص دون تحقق. لا تضف مصادر وهمية. "+
+     "اجعل النص مناسباً لفيسبوك بعنوان جذاب وفقرات قصيرة. "+
+     "لا تختلق تواريخ أو اقتباسات أو وقائع تاريخية. "+
+     "إذا لم تكن متأكداً من معلومة فلا تجزم بها. "+
+     "لا تنسب قولاً لشخص دون تحقق. "+
      "أخرج نص المنشور فقط دون شرح لطريقة الكتابة.";
 
-    const ai=await fetch("https://api.openai.com/v1/responses",{
-     method:"POST",
-     headers:{
-      "Authorization":"Bearer "+env.OPENAI_API_KEY,
-      "Content-Type":"application/json"
-     },
-     body:JSON.stringify({
-      model:AI_MODEL,
-      instructions:"أنت كاتب محتوى ثقافي وتاريخي دقيق. لا تخترع الحقائق.",
-      input:prompt,
-      max_output_tokens:700
-     })
-    });
+    const ai=await fetch(
+     "https://generativelanguage.googleapis.com/v1beta/models/"+
+     GEMINI_MODEL+":generateContent",
+     {
+      method:"POST",
+      headers:{
+       "Content-Type":"application/json",
+       "x-goog-api-key":env.GEMINI_API_KEY
+      },
+      body:JSON.stringify({
+       systemInstruction:{
+        parts:[{
+         text:"أنت كاتب محتوى ثقافي وتاريخي دقيق. لا تخترع الحقائق."
+        }]
+       },
+       contents:[{
+        role:"user",
+        parts:[{text:prompt}]
+       }],
+       generationConfig:{
+        temperature:0.8,
+        maxOutputTokens:700
+       }
+      })
+     }
+    );
+
     const result=await ai.json();
-    if(!ai.ok) throw new Error(result.error?.message||"فشل الاتصال بالذكاء الاصطناعي");
-    const content=getText(result).trim();
-    if(!content) throw new Error("لم يرجع الذكاء الاصطناعي نصاً");
+
+    if(!ai.ok){
+     throw new Error(
+      result.error?.message||"فشل الاتصال بـ Gemini"
+     );
+    }
+
+    const content=
+     result.candidates?.[0]?.content?.parts
+      ?.map(part=>part.text||"")
+      .join("")
+      .trim()||"";
+
+    if(!content){
+     const reason=result.candidates?.[0]?.finishReason;
+     throw new Error("لم يرجع Gemini نصاً. السبب: "+(reason||"غير معروف"));
+    }
 
     const saved=await env.DB.prepare(
-     "INSERT INTO posts (content,post_type,status) VALUES (?,?, 'draft')"
+     "INSERT INTO posts (content,post_type,status) VALUES (?,?,'draft')"
     ).bind(content,category).run();
 
-    return json({ok:true,id:saved.meta.last_row_id,content});
-   }catch(e){return json({ok:false,error:e.message},500);}
+    return json({
+     ok:true,
+     id:saved.meta.last_row_id,
+     content
+    });
+
+   }catch(e){
+    return json({ok:false,error:e.message},500);
+   }
   }
 
+  // عرض المسودات
   if(url.pathname==="/api/drafts" && request.method==="GET"){
    try{
     const result=await env.DB.prepare(
-     "SELECT id,content,post_type,created_at FROM posts WHERE status='draft' ORDER BY id DESC LIMIT 30"
+     "SELECT id,content,post_type,created_at FROM posts "+
+     "WHERE status='draft' ORDER BY id DESC LIMIT 30"
     ).all();
+
     return json({ok:true,items:result.results||[]});
-   }catch(e){return json({ok:false,error:e.message},500);}
+
+   }catch(e){
+    return json({ok:false,error:e.message},500);
+   }
   }
 
+  // نشر مسودة محفوظة
   if(url.pathname==="/api/publish-draft" && request.method==="POST"){
    try{
     const body=await request.json();
     const id=Number(body.id);
-    if(!Number.isInteger(id)||id<1) return json({ok:false,error:"رقم المسودة غير صحيح"},400);
+
+    if(!Number.isInteger(id)||id<1){
+     return json({ok:false,error:"رقم المسودة غير صحيح"},400);
+    }
 
     const post=await env.DB.prepare(
      "SELECT id,content,status FROM posts WHERE id=?"
     ).bind(id).first();
 
-    if(!post) return json({ok:false,error:"المسودة غير موجودة"},404);
-    if(post.status!=="draft") return json({ok:false,error:"هذه المسودة ليست في حالة مسودة"},409);
+    if(!post){
+     return json({ok:false,error:"المسودة غير موجودة"},404);
+    }
 
-    const u=new URL("https://graph.facebook.com/"+GRAPH_VERSION+"/"+PAGE_ID+"/feed");
+    if(post.status!=="draft"){
+     return json({ok:false,error:"هذه المسودة ليست مسودة"},409);
+    }
+
+    const u=new URL(
+     "https://graph.facebook.com/"+GRAPH_VERSION+"/"+PAGE_ID+"/feed"
+    );
+
     u.searchParams.set("message",post.content);
     u.searchParams.set("access_token",env.PAGE_ACCESS_TOKEN);
+
     const r=await fetch(u,{method:"POST"});
     const d=await r.json();
 
     if(!r.ok){
      await env.DB.prepare(
-      "INSERT INTO publish_logs (post_id,result,message) VALUES (?, 'failed',?)"
+      "INSERT INTO publish_logs (post_id,result,message) "+
+      "VALUES (?, 'failed',?)"
      ).bind(id,d.error?.message||"Facebook error").run();
-     return json({ok:false,error:d.error?.message||"فشل النشر"},400);
+
+     return json({
+      ok:false,
+      error:d.error?.message||"فشل النشر"
+     },400);
     }
 
     await env.DB.prepare(
-     "UPDATE posts SET status='published',facebook_post_id=?,published_at=CURRENT_TIMESTAMP WHERE id=?"
+     "UPDATE posts SET status='published',facebook_post_id=?,"+
+     "published_at=CURRENT_TIMESTAMP WHERE id=?"
     ).bind(d.id,id).run();
 
     await env.DB.prepare(
-     "INSERT INTO publish_logs (post_id,result,message) VALUES (?, 'success',?)"
+     "INSERT INTO publish_logs (post_id,result,message) "+
+     "VALUES (?, 'success',?)"
     ).bind(id,d.id).run();
 
     return json({ok:true,id:d.id});
-   }catch(e){return json({ok:false,error:e.message},500);}
+
+   }catch(e){
+    return json({ok:false,error:e.message},500);
+   }
   }
 
+  // نشر مباشر
   if(url.pathname==="/api/publish" && request.method==="POST"){
    try{
     const body=await request.json();
     const message=String(body.message||"").trim();
-    if(!message) return json({ok:false,error:"نص المنشور فارغ"},400);
 
-    const u=new URL("https://graph.facebook.com/"+GRAPH_VERSION+"/"+PAGE_ID+"/feed");
+    if(!message){
+     return json({ok:false,error:"نص المنشور فارغ"},400);
+    }
+
+    const u=new URL(
+     "https://graph.facebook.com/"+GRAPH_VERSION+"/"+PAGE_ID+"/feed"
+    );
+
     u.searchParams.set("message",message);
     u.searchParams.set("access_token",env.PAGE_ACCESS_TOKEN);
+
     const r=await fetch(u,{method:"POST"});
     const d=await r.json();
 
-    if(!r.ok) return json({ok:false,error:d.error?.message||"فشل النشر"},400);
+    if(!r.ok){
+     return json({
+      ok:false,
+      error:d.error?.message||"فشل النشر"
+     },400);
+    }
 
     await env.DB.prepare(
-     "INSERT INTO posts (content,status,facebook_post_id,published_at) VALUES (?, 'published',?,CURRENT_TIMESTAMP)"
+     "INSERT INTO posts (content,status,facebook_post_id,published_at) "+
+     "VALUES (?, 'published',?,CURRENT_TIMESTAMP)"
     ).bind(message,d.id).run();
 
     await env.DB.prepare(
@@ -322,10 +438,12 @@ export default {
     ).bind(d.id).run();
 
     return json({ok:true,id:d.id});
-   }catch(e){return json({ok:false,error:e.message},500);}
+
+   }catch(e){
+    return json({ok:false,error:e.message},500);
+   }
   }
 
   return new Response("Not Found",{status:404});
  }
 };
-
