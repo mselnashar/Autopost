@@ -27,7 +27,7 @@ const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"
 <section class="card"><div class="head"><h2>المسودات المحفوظة</h2><button class="secondary" onclick="loadDrafts()">تحديث</button></div><div id="drafts">اضغط تحديث لعرض المسودات.</div></section>
 <section class="card"><h2>النشر المباشر</h2><p class="muted">النشر هنا يتم فوراً على صفحة Facebook.</p><button class="primary" onclick="publishText()">نشر المنشور الحالي</button><div id="publishStatus" class="status">لم يتم النشر بعد.</div></section>
 <div class="footer">أقوال © مركز إدارة المحتوى</div></main>
-<script src="https://raw.githubusercontent.com/mselnashar/Autopost/main/app.js" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js" defer></script> 
 </body></html>`;
 
 function json(data,status=200){return Response.json(data,{status})}
