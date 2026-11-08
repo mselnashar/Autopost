@@ -27,27 +27,8 @@ const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"
 <section class="card"><div class="head"><h2>المسودات المحفوظة</h2><button class="secondary" onclick="loadDrafts()">تحديث</button></div><div id="drafts">اضغط تحديث لعرض المسودات.</div></section>
 <section class="card"><h2>النشر المباشر</h2><p class="muted">النشر هنا يتم فوراً على صفحة Facebook.</p><button class="primary" onclick="publishText()">نشر المنشور الحالي</button><div id="publishStatus" class="status">لم يتم النشر بعد.</div></section>
 <div class="footer">أقوال © مركز إدارة المحتوى</div></main>
-<script>
-const $=id=>document.getElementById(id);
-async function api(path,method="GET",body=null){const key=$("admin").value.trim();if(!key)throw Error("أدخل مفتاح الإدارة");const r=await fetch(path,{method,headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});const d=await r.json();if(!r.ok)throw Error(d.error||"حدث خطأ");return d}
-function status(id,msg,type=""){const e=$(id);e.textContent=msg;e.className="status "+type}
-function preview(){const v=$("message").value;$("preview").textContent=v||"ستظهر المعاينة هنا.";const n=v.trim()?v.trim().split(/\\s+/).length:0;$("wordCount").textContent=n+" كلمة"}
-$("message").addEventListener("input",preview);
-async function checkConnection(){status("connection","جاري الفحص...");try{const d=await api("/api/status");status("connection","متصل بصفحة "+d.page,"ok")}catch(e){status("connection",e.message,"err")}}
-async function stats(){try{const d=await api("/api/stats");$("total").textContent=d.total;$("draftCount").textContent=d.drafts;$("publishedCount").textContent=d.published}catch(e){}}
-async function refreshAll(){await checkConnection();await stats();await loadDrafts();await loadAuto()}
-async function generate(){const topic=$("topic").value.trim();if(!topic)return status("aiStatus","اكتب الموضوع أولاً","err");const b=$("generateBtn");b.disabled=true;status("aiStatus","جاري إنشاء المحتوى...");try{const d=await api("/api/generate","POST",{topic,category:$("category").value,length:$("length").value,extra:$("extra").value});$("message").value=d.content;preview();status("aiStatus","تم إنشاء المسودة رقم "+d.id,"ok");await loadDrafts();await stats()}catch(e){status("aiStatus",e.message,"err")}finally{b.disabled=false}}
-async function loadDrafts(){const box=$("drafts");box.textContent="جاري التحميل...";try{const d=await api("/api/drafts");box.replaceChildren();if(!d.items.length){box.textContent="لا توجد مسودات";return}d.items.forEach(p=>{const el=document.createElement("div");el.className="post";const title=document.createElement("b");title.textContent="مسودة #"+p.id+" — "+(p.post_type||"محتوى");const body=document.createElement("p");body.textContent=p.content;const actions=document.createElement("div");actions.className="actions";const edit=document.createElement("button");edit.className="secondary";edit.textContent="تعديل";edit.onclick=()=>{$("message").value=p.content;preview()};const pub=document.createElement("button");pub.className="primary";pub.textContent="نشر";pub.onclick=()=>publishDraft(p.id);const del=document.createElement("button");del.className="danger";del.textContent="حذف";del.onclick=()=>deleteDraft(p.id);actions.append(edit,pub,del);el.append(title,body,actions);box.append(el)})}catch(e){box.textContent=e.message}}
-async function saveDraft(){const content=$("message").value.trim();if(!content)return status("aiStatus","المحتوى فارغ","err");try{const d=await api("/api/save-draft","POST",{content,category:$("category").value});status("aiStatus","تم حفظ المسودة #"+d.id,"ok");await loadDrafts();await stats()}catch(e){status("aiStatus",e.message,"err")}}
-async function deleteDraft(id){if(!confirm("حذف المسودة؟"))return;try{await api("/api/delete-draft","POST",{id});await loadDrafts();await stats()}catch(e){alert(e.message)}}
-async function publishDraft(id){if(!confirm("نشر المسودة على Facebook؟"))return;try{const d=await api("/api/publish-draft","POST",{id});alert("تم النشر: "+d.id);await loadDrafts();await stats()}catch(e){alert(e.message)}}
-async function publishText(){const message=$("message").value.trim();if(!message)return status("publishStatus","اكتب المنشور أولاً","err");if(!confirm("تأكيد النشر الفعلي؟"))return;status("publishStatus","جاري النشر...");try{const d=await api("/api/publish","POST",{message});status("publishStatus","تم النشر: "+d.id,"ok");await stats()}catch(e){status("publishStatus",e.message,"err")}}
-async function copyText(){try{await navigator.clipboard.writeText($("message").value);alert("تم النسخ")}catch(e){$("message").select()}}
-function clearEditor(){if(confirm("مسح النص؟")){$("message").value="";preview()}}
-async function loadAuto(){try{const d=await api("/api/auto/status");status("autoStatus",d.enabled?"النشر التلقائي مفعّل":"النشر التلقائي متوقف",d.enabled?"ok":"");$("autoToggle").textContent=d.enabled?"إيقاف النشر التلقائي":"تفعيل النشر التلقائي";$("nextRun").textContent="موعد النشر القادم: "+d.nextRun;const box=$("autoLogs");box.replaceChildren();if(!d.logs.length){box.textContent="لا توجد محاولات بعد";return}d.logs.forEach(x=>{const row=document.createElement("div");row.className="post";row.textContent=(x.status==="success"?"نجاح":x.status==="failed"?"فشل":"قيد التنفيذ")+" | "+(x.topic||"")+"\n"+(x.created_at||"")+" — "+(x.message||"");box.append(row)})}catch(e){status("autoStatus",e.message,"err")}}
-async function toggleAuto(){const enabled=$("autoToggle").textContent.includes("إيقاف");if(!confirm(enabled?"إيقاف النشر التلقائي؟":"تفعيل النشر التلقائي والنشر دون موافقة في المواعيد المحددة؟"))return;try{await api("/api/auto/toggle","POST",{enabled:!enabled});await loadAuto()}catch(e){status("autoStatus",e.message,"err")}}
-preview();
-</script></body></html>`;
+<script src="/app.js" defer></script>
+</body></html>`;
 
 function json(data,status=200){return Response.json(data,{status})}
 async function ensureAutoSchema(DB){
