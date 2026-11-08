@@ -1,768 +1,118 @@
+const PAGE_ID="282216368809712", GRAPH_VERSION="v27.0", GEMINI_MODEL="gemini-3.8-flash";
+const TOPICS=[
+["تاريخ مصر","الحياة اليومية في مصر القديمة"],["التاريخ العربي","بيت الحكمة وحركة الترجمة في بغداد"],
+["التاريخ العالمي","مدينة بومبي قبل ثوران البركان"],["شخصيات مؤثرة","ابن الهيثم وأثره في المنهج العلمي"],
+["ألغاز تاريخية","لغز مستعمرة رونوك"],["الثقافة والعلوم","كيف غيّر اختراع الورق مسار المعرفة؟"],
+["قصص إنسانية","قصة تضامن إنساني غيّرت حياة أشخاص"],["تاريخ مصر","قصة إنشاء مكتبة الإسكندرية القديمة"],
+["التاريخ العربي","رحلات ابن بطوطة"],["التاريخ العالمي","اكتشاف حجر رشيد وفك رموزه"],
+["شخصيات مؤثرة","ماري كوري ورحلتها العلمية"],["الثقافة والعلوم","كيف تعمل الذاكرة البشرية؟"],
+["تاريخ مصر","قصة قناة السويس"],["التاريخ العربي","الخوارزمي وتطور علم الجبر"],
+["الثقافة والعلوم","لماذا نرى البرق قبل سماع الرعد؟"]
+];
 
-const PAGE_ID = "282216368809712";
-const GRAPH_VERSION = "v27.0";
-const GEMINI_MODEL = "gemini-3.8-flash";
-
-const html = `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#302052">
-<title>أقوال | مركز إدارة المحتوى</title>
+const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#302052"><title>أقوال | إدارة المحتوى</title>
 <style>
-:root{
- --primary:#6845a3;--dark:#302052;--light:#f6f3fb;
- --text:#29243b;--muted:#89839a;--border:#ebe7f1;
- --green:#198754;--red:#c33c54;--white:#fff;
-}
-*{box-sizing:border-box}
-body{margin:0;background:var(--light);color:var(--text);
- font-family:Arial,Tahoma,sans-serif;line-height:1.7}
-button,input,textarea,select{font:inherit}
-button{cursor:pointer;border:0}
-.top{
- background:linear-gradient(135deg,#302052,#67439c);
- color:white;padding:25px 20px 30px;
-}
-.top-inner{max-width:1050px;margin:auto}
-.brand{display:flex;align-items:center;gap:13px}
-.logo{width:48px;height:48px;border-radius:15px;
- background:#ffffff20;display:grid;place-items:center;
- font-size:26px;font-weight:bold}
-.brand h1{margin:0;font-size:26px}
-.brand p{margin:2px 0;color:#ddd1f1;font-size:13px}
-.top-desc{margin-top:20px;color:#e7def3;font-size:14px}
-main{max-width:1050px;margin:auto;padding:18px}
-.card{
- background:white;border:1px solid var(--border);
- border-radius:19px;padding:20px;margin-bottom:17px;
- box-shadow:0 5px 22px #35205c08
-}
-.card-title{display:flex;justify-content:space-between;
- align-items:center;gap:10px;margin-bottom:17px}
-.card-title h2{font-size:18px;margin:0}
-.muted{color:var(--muted);font-size:13px}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.stat{background:#f8f6fb;border:1px solid var(--border);
- border-radius:15px;padding:15px}
-.stat-label{font-size:12px;color:var(--muted)}
-.stat-value{font-size:27px;font-weight:bold;color:var(--dark);margin-top:5px}
-.status{background:#f2edf9;padding:12px 14px;
- border-radius:12px;font-size:14px;margin:10px 0}
-.status.ok{background:#eaf7ef;color:#176c3d}
-.status.err{background:#fff0f1;color:#a32d42}
-.field{margin:13px 0}
-label{display:block;font-size:13px;font-weight:bold;margin-bottom:6px}
-input,textarea,select{
- width:100%;padding:13px 14px;border:1px solid #ded9e7;
- border-radius:12px;background:#fff;color:var(--text);
- outline:none
-}
-input:focus,textarea:focus,select:focus{
- border-color:var(--primary);box-shadow:0 0 0 3px #6845a318
-}
-textarea{min-height:300px;resize:vertical;line-height:1.9}
-button.primary{
- background:var(--primary);color:white;padding:12px 19px;
- border-radius:12px;font-weight:bold
-}
-button.secondary{
- background:#f0ecf6;color:var(--dark);padding:11px 16px;
- border-radius:12px
-}
-button.danger{
- background:#fff0f1;color:#a32d42;padding:10px 14px;
- border-radius:10px
-}
-button:disabled{opacity:.55;cursor:wait}
-.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
-.grid-editor{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-.preview{
- background:#fcfbfe;border:1px solid var(--border);
- border-radius:14px;padding:18px;min-height:300px;
- white-space:pre-wrap;line-height:2;overflow-wrap:anywhere
-}
-.preview-title{font-weight:bold;font-size:17px;margin-bottom:12px}
-.post{
- border:1px solid var(--border);border-radius:14px;
- padding:15px;margin:12px 0
-}
-.post-head{display:flex;justify-content:space-between;
- gap:8px;align-items:center;flex-wrap:wrap}
-.post-content{white-space:pre-wrap;line-height:1.9;
- margin:12px 0;overflow-wrap:anywhere}
-.tag{background:#f0ecf8;color:#63428d;padding:4px 9px;
- border-radius:20px;font-size:11px}
-.empty{text-align:center;padding:30px;color:var(--muted)}
-.footer{text-align:center;color:var(--muted);font-size:12px;padding:20px}
-.small-btn{padding:8px 11px;border-radius:9px;
- background:#f0ecf6;color:var(--dark);font-size:13px}
-hr{border:0;border-top:1px solid var(--border);margin:18px 0}
-@media(max-width:650px){
- main{padding:12px}
- .card{padding:16px;border-radius:16px}
- .stats{gap:7px}
- .stat{padding:10px}
- .stat-value{font-size:22px}
- .grid-editor{grid-template-columns:1fr}
- textarea{min-height:260px}
- .top{padding:21px 17px}
-}
-</style>
-</head>
-<body>
-
-<header class="top">
- <div class="top-inner">
-  <div class="brand">
-   <div class="logo">ق</div>
-   <div>
-    <h1>أقوال</h1>
-    <p>مركز إدارة المحتوى والنشر الذكي</p>
-   </div>
-  </div>
-  <div class="top-desc">
-   إدارة القصص والثقافة والتاريخ وصناعة محتوى الصفحة
-  </div>
- </div>
-</header>
-
+:root{--p:#6845a3;--d:#302052;--bg:#f6f3fb;--t:#29243b;--m:#89839a;--b:#ebe7f1}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font:16px Arial,Tahoma;line-height:1.7}button,input,textarea,select{font:inherit}button{cursor:pointer;border:0}.top{background:linear-gradient(135deg,#302052,#67439c);color:white;padding:22px}.wrap,main{max-width:950px;margin:auto}.brand{font-size:25px;font-weight:bold}.brand small{display:block;font-size:13px;font-weight:normal;color:#ddd1f1}.top p{color:#e7def3}main{padding:15px}.card{background:white;border:1px solid var(--b);border-radius:16px;padding:17px;margin-bottom:14px}.head{display:flex;justify-content:space-between;align-items:center;gap:8px}.head h2{font-size:18px;margin:0 0 12px}.muted{font-size:13px;color:var(--m)}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stat{background:#f8f6fb;border:1px solid var(--b);border-radius:12px;padding:10px}.stat strong{display:block;font-size:24px;color:var(--d)}label{display:block;font-size:13px;font-weight:bold;margin:10px 0 5px}input,textarea,select{width:100%;padding:11px;border:1px solid #ded9e7;border-radius:10px;background:white;color:var(--t)}textarea{min-height:240px;line-height:1.9}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px}button.primary{background:var(--p);color:white;padding:10px 15px;border-radius:10px}button.secondary{background:#f0ecf6;color:var(--d);padding:9px 13px;border-radius:10px}button.danger{background:#fff0f1;color:#a32d42;padding:9px 13px;border-radius:10px}.status{padding:10px 12px;background:#f2edf9;border-radius:10px;margin:10px 0;font-size:14px}.ok{background:#eaf7ef;color:#176c3d}.err{background:#fff0f1;color:#a32d42}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.preview,.post{border:1px solid var(--b);border-radius:12px;padding:13px;white-space:pre-wrap;overflow-wrap:anywhere}.post{margin:10px 0}.tag{font-size:11px;background:#f0ecf8;color:#63428d;padding:4px 8px;border-radius:20px}.footer{text-align:center;color:var(--m);font-size:12px;padding:20px}@media(max-width:620px){.grid{grid-template-columns:1fr}main{padding:10px}.card{padding:14px}.stat strong{font-size:21px}}
+</style></head><body>
+<header class="top"><div class="wrap"><div class="brand">أقوال<small>مركز إدارة المحتوى والنشر الذكي</small></div><p>إدارة المحتوى والنشر على صفحة Facebook</p></div></header>
 <main>
+<section class="card"><div class="head"><h2>لوحة التحكم</h2><span class="tag">الرئيسية</span></div><div class="stats"><div class="stat">إجمالي المنشورات<strong id="total">—</strong></div><div class="stat">المسودات<strong id="draftCount">—</strong></div><div class="stat">المنشورة<strong id="publishedCount">—</strong></div></div><div id="connection" class="status">أدخل مفتاح الإدارة لفحص الاتصال</div><label>مفتاح الإدارة</label><input id="admin" type="password" placeholder="ADMIN_KEY"><div class="actions"><button class="primary" onclick="checkConnection()">فحص الاتصال</button><button class="secondary" onclick="refreshAll()">تحديث البيانات</button></div></section>
 
-<section class="card">
- <div class="card-title">
-  <h2>لوحة التحكم</h2>
-  <span class="tag">الرئيسية</span>
- </div>
- <div class="stats">
-  <div class="stat">
-   <div class="stat-label">إجمالي المنشورات</div>
-   <div class="stat-value" id="total">—</div>
-  </div>
-  <div class="stat">
-   <div class="stat-label">المسودات</div>
-   <div class="stat-value" id="draftCount">—</div>
-  </div>
-  <div class="stat">
-   <div class="stat-label">المنشورات المنشورة</div>
-   <div class="stat-value" id="publishedCount">—</div>
-  </div>
- </div>
- <div class="status" id="connection">أدخل مفتاح الإدارة لفحص الاتصال</div>
- <div class="field">
-  <label>مفتاح إدارة البوت</label>
-  <input id="admin" type="password" placeholder="ADMIN_KEY">
- </div>
- <div class="actions">
-  <button class="primary" onclick="checkConnection()">فحص الاتصال</button>
-  <button class="secondary" onclick="refreshAll()">تحديث البيانات</button>
- </div>
-</section>
+<section class="card"><div class="head"><h2>النشر التلقائي</h2><span class="tag">كل 4 ساعات</span></div><div id="autoStatus" class="status">متوقف افتراضياً — لن ينشر قبل تفعيله</div><p class="muted">مواعيد القاهرة: 10:00، 14:00، 18:00، 22:00، 02:00، 06:00. يتجنب آخر 30 موضوعاً.</p><div class="actions"><button id="autoToggle" class="primary" onclick="toggleAuto()">تفعيل النشر التلقائي</button><button class="secondary" onclick="loadAuto()">تحديث السجل</button></div><p id="nextRun" class="muted"></p><hr><b>آخر المحاولات</b><div id="autoLogs">لا توجد محاولات بعد.</div></section>
 
-<section class="card">
- <div class="card-title">
-  <h2>إنشاء محتوى جديد</h2>
-  <span class="tag">Gemini AI</span>
- </div>
+<section class="card"><div class="head"><h2>إنشاء محتوى جديد</h2><span class="tag">Gemini AI</span></div><label>موضوع المنشور</label><input id="topic" placeholder="اكتب موضوع المنشور"><label>التصنيف</label><select id="category"><option>تاريخ مصر</option><option>التاريخ العربي</option><option>التاريخ العالمي</option><option>شخصيات مؤثرة</option><option>ثقافة وعلوم</option><option>قصص إنسانية</option><option>ألغاز تاريخية</option><option>أقوال وحكم</option></select><label>حجم المحتوى</label><select id="length"><option>200 إلى 300 كلمة</option><option selected>400 إلى 600 كلمة</option><option>600 إلى 800 كلمة</option><option>100 إلى 150 كلمة</option></select><label>تعليمات إضافية</label><input id="extra" placeholder="اختياري"><button id="generateBtn" class="primary" style="width:100%;margin-top:12px" onclick="generate()">إنشاء المحتوى</button><div id="aiStatus" class="status">اكتب الموضوع ثم ابدأ.</div></section>
 
- <div class="field">
-  <label>موضوع المنشور</label>
-  <input id="topic" placeholder="مثلاً: ابن سينا ورحلته في عالم الطب">
- </div>
+<section class="card"><h2>محرر المنشورات</h2><div class="grid"><div><label>نص المنشور</label><textarea id="message" placeholder="اكتب أو أنشئ منشوراً..."></textarea><div class="actions"><button class="primary" onclick="saveDraft()">حفظ كمسودة</button><button class="secondary" onclick="copyText()">نسخ النص</button><button class="secondary" onclick="clearEditor()">مسح</button></div></div><div><label>المعاينة</label><div id="preview" class="preview">ستظهر المعاينة هنا.</div><p id="wordCount" class="muted">0 كلمة</p></div></div></section>
 
- <div class="field">
-  <label>تصنيف المحتوى</label>
-  <select id="category">
-   <option value="قصة تاريخية مصرية">تاريخ مصر</option>
-   <option value="قصة تاريخية عربية">التاريخ العربي</option>
-   <option value="قصة تاريخية عالمية">التاريخ العالمي</option>
-   <option value="شخصية تاريخية">شخصيات تاريخية</option>
-   <option value="معلومة ثقافية">ثقافة ومعرفة</option>
-   <option value="قصة إنسانية">قصص إنسانية</option>
-   <option value="حكمة أو قول مأثور">أقوال وحكم</option>
-   <option value="نص فيديو ريلز قصير">سيناريو Reels</option>
-  </select>
- </div>
-
- <div class="field">
-  <label>حجم المحتوى</label>
-  <select id="length">
-   <option value="400 إلى 600 كلمة">مقال متوسط (400–600 كلمة)</option>
-   <option value="600 إلى 800 كلمة">مقال طويل (600–800 كلمة)</option>
-   <option value="200 إلى 300 كلمة">منشور مختصر (200–300 كلمة)</option>
-   <option value="100 إلى 150 كلمة">نص قصير (100–150 كلمة)</option>
-  </select>
- </div>
-
- <div class="field">
-  <label>تعليمات إضافية (اختياري)</label>
-  <input id="extra" placeholder="مثلاً: ركز على طفولته وإنجازاته العلمية">
- </div>
-
- <button class="primary" id="generateBtn" onclick="generate()" style="width:100%">
-  إنشاء المحتوى بالذكاء الاصطناعي
- </button>
- <div class="status" id="aiStatus">اكتب الموضوع وحدد نوع المحتوى ثم ابدأ.</div>
-</section>
-
-<section class="card">
- <div class="card-title">
-  <h2>محرر المنشورات</h2>
-  <span class="tag">معاينة وتعديل</span>
- </div>
- <div class="grid-editor">
-  <div>
-   <label>نص المنشور</label>
-   <textarea id="message" placeholder="سيظهر المحتوى الذي تم إنشاؤه هنا..."></textarea>
-   <div class="actions">
-    <button class="primary" onclick="saveDraft()">حفظ كمسودة</button>
-    <button class="secondary" onclick="copyText()">نسخ النص</button>
-    <button class="secondary" onclick="clearEditor()">مسح المحرر</button>
-   </div>
-  </div>
-  <div>
-   <label>معاينة المنشور</label>
-   <div class="preview" id="preview">ستظهر المعاينة هنا أثناء الكتابة.</div>
-   <div class="muted" id="wordCount">0 كلمة</div>
-  </div>
- </div>
-</section>
-
-<section class="card">
- <div class="card-title">
-  <h2>المسودات المحفوظة</h2>
-  <button class="secondary" onclick="loadDrafts()">تحديث</button>
- </div>
- <div id="drafts"><div class="empty">اضغط تحديث لعرض المسودات.</div></div>
-</section>
-
-<section class="card">
- <div class="card-title">
-  <h2>النشر المباشر</h2>
-  <span class="tag">Facebook</span>
- </div>
- <p class="muted">راجع النص قبل النشر. النشر هنا يتم مباشرة على صفحة أقوال.</p>
- <button class="primary" onclick="publishText()">نشر المنشور الحالي</button>
- <div class="status" id="publishStatus">لم يتم النشر بعد.</div>
-</section>
-
-<div class="footer">
- أقوال © مركز إدارة المحتوى والنشر الذكي
-</div>
-</main>
-
+<section class="card"><div class="head"><h2>المسودات المحفوظة</h2><button class="secondary" onclick="loadDrafts()">تحديث</button></div><div id="drafts">اضغط تحديث لعرض المسودات.</div></section>
+<section class="card"><h2>النشر المباشر</h2><p class="muted">النشر هنا يتم فوراً على صفحة Facebook.</p><button class="primary" onclick="publishText()">نشر المنشور الحالي</button><div id="publishStatus" class="status">لم يتم النشر بعد.</div></section>
+<div class="footer">أقوال © مركز إدارة المحتوى</div></main>
 <script>
 const $=id=>document.getElementById(id);
+async function api(path,method="GET",body=null){const key=$("admin").value.trim();if(!key)throw Error("أدخل مفتاح الإدارة");const r=await fetch(path,{method,headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});const d=await r.json();if(!r.ok)throw Error(d.error||"حدث خطأ");return d}
+function status(id,msg,type=""){const e=$(id);e.textContent=msg;e.className="status "+type}
+function preview(){const v=$("message").value;$("preview").textContent=v||"ستظهر المعاينة هنا.";const n=v.trim()?v.trim().split(/\\s+/).length:0;$("wordCount").textContent=n+" كلمة"}
+$("message").addEventListener("input",preview);
+async function checkConnection(){status("connection","جاري الفحص...");try{const d=await api("/api/status");status("connection","متصل بصفحة "+d.page,"ok")}catch(e){status("connection",e.message,"err")}}
+async function stats(){try{const d=await api("/api/stats");$("total").textContent=d.total;$("draftCount").textContent=d.drafts;$("publishedCount").textContent=d.published}catch(e){}}
+async function refreshAll(){await checkConnection();await stats();await loadDrafts();await loadAuto()}
+async function generate(){const topic=$("topic").value.trim();if(!topic)return status("aiStatus","اكتب الموضوع أولاً","err");const b=$("generateBtn");b.disabled=true;status("aiStatus","جاري إنشاء المحتوى...");try{const d=await api("/api/generate","POST",{topic,category:$("category").value,length:$("length").value,extra:$("extra").value});$("message").value=d.content;preview();status("aiStatus","تم إنشاء المسودة رقم "+d.id,"ok");await loadDrafts();await stats()}catch(e){status("aiStatus",e.message,"err")}finally{b.disabled=false}}
+async function loadDrafts(){const box=$("drafts");box.textContent="جاري التحميل...";try{const d=await api("/api/drafts");box.replaceChildren();if(!d.items.length){box.textContent="لا توجد مسودات";return}d.items.forEach(p=>{const el=document.createElement("div");el.className="post";const title=document.createElement("b");title.textContent="مسودة #"+p.id+" — "+(p.post_type||"محتوى");const body=document.createElement("p");body.textContent=p.content;const actions=document.createElement("div");actions.className="actions";const edit=document.createElement("button");edit.className="secondary";edit.textContent="تعديل";edit.onclick=()=>{$("message").value=p.content;preview()};const pub=document.createElement("button");pub.className="primary";pub.textContent="نشر";pub.onclick=()=>publishDraft(p.id);const del=document.createElement("button");del.className="danger";del.textContent="حذف";del.onclick=()=>deleteDraft(p.id);actions.append(edit,pub,del);el.append(title,body,actions);box.append(el)})}catch(e){box.textContent=e.message}}
+async function saveDraft(){const content=$("message").value.trim();if(!content)return status("aiStatus","المحتوى فارغ","err");try{const d=await api("/api/save-draft","POST",{content,category:$("category").value});status("aiStatus","تم حفظ المسودة #"+d.id,"ok");await loadDrafts();await stats()}catch(e){status("aiStatus",e.message,"err")}}
+async function deleteDraft(id){if(!confirm("حذف المسودة؟"))return;try{await api("/api/delete-draft","POST",{id});await loadDrafts();await stats()}catch(e){alert(e.message)}}
+async function publishDraft(id){if(!confirm("نشر المسودة على Facebook؟"))return;try{const d=await api("/api/publish-draft","POST",{id});alert("تم النشر: "+d.id);await loadDrafts();await stats()}catch(e){alert(e.message)}}
+async function publishText(){const message=$("message").value.trim();if(!message)return status("publishStatus","اكتب المنشور أولاً","err");if(!confirm("تأكيد النشر الفعلي؟"))return;status("publishStatus","جاري النشر...");try{const d=await api("/api/publish","POST",{message});status("publishStatus","تم النشر: "+d.id,"ok");await stats()}catch(e){status("publishStatus",e.message,"err")}}
+async function copyText(){try{await navigator.clipboard.writeText($("message").value);alert("تم النسخ")}catch(e){$("message").select()}}
+function clearEditor(){if(confirm("مسح النص؟")){$("message").value="";preview()}}
+async function loadAuto(){try{const d=await api("/api/auto/status");status("autoStatus",d.enabled?"النشر التلقائي مفعّل":"النشر التلقائي متوقف",d.enabled?"ok":"");$("autoToggle").textContent=d.enabled?"إيقاف النشر التلقائي":"تفعيل النشر التلقائي";$("nextRun").textContent="موعد النشر القادم: "+d.nextRun;const box=$("autoLogs");box.replaceChildren();if(!d.logs.length){box.textContent="لا توجد محاولات بعد";return}d.logs.forEach(x=>{const row=document.createElement("div");row.className="post";row.textContent=(x.status==="success"?"نجاح":x.status==="failed"?"فشل":"قيد التنفيذ")+" | "+(x.topic||"")+"\n"+(x.created_at||"")+" — "+(x.message||"");box.append(row)})}catch(e){status("autoStatus",e.message,"err")}}
+async function toggleAuto(){const enabled=$("autoToggle").textContent.includes("إيقاف");if(!confirm(enabled?"إيقاف النشر التلقائي؟":"تفعيل النشر التلقائي والنشر دون موافقة في المواعيد المحددة؟"))return;try{await api("/api/auto/toggle","POST",{enabled:!enabled});await loadAuto()}catch(e){status("autoStatus",e.message,"err")}}
+preview();
+</script></body></html>`;
 
-async function call(path,method="GET",body=null){
- const key=$("admin").value.trim();
- if(!key) throw new Error("أدخل مفتاح الإدارة أولاً");
- const r=await fetch(path,{
-  method,
-  headers:{
-   "Authorization":"Bearer "+key,
-   "Content-Type":"application/json"
-  },
-  body:body?JSON.stringify(body):undefined
- });
- const d=await r.json();
- if(!r.ok) throw new Error(d.error||"حدث خطأ");
- return d;
+function json(data,status=200){return Response.json(data,{status})}
+async function ensureAutoSchema(DB){
+ await DB.prepare("CREATE TABLE IF NOT EXISTS auto_settings (key TEXT PRIMARY KEY,value TEXT NOT NULL)").run();
+ await DB.prepare("INSERT OR IGNORE INTO auto_settings (key,value) VALUES ('enabled','0')").run();
+ await DB.prepare("CREATE TABLE IF NOT EXISTS auto_topics (id INTEGER PRIMARY KEY AUTOINCREMENT,topic TEXT NOT NULL UNIQUE,category TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)").run();
+ await DB.prepare("CREATE TABLE IF NOT EXISTS auto_runs (id INTEGER PRIMARY KEY AUTOINCREMENT,slot_key TEXT NOT NULL UNIQUE,status TEXT NOT NULL,post_id INTEGER,topic TEXT,message TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)").run();
 }
-
-function setStatus(id,message,type=""){
- const el=$(id);
- el.textContent=message;
- el.className="status "+type;
+function cairoSlot(date){const p=Object.fromEntries(new Intl.DateTimeFormat("en-GB",{timeZone:"Africa/Cairo",hour:"2-digit",minute:"2-digit",year:"numeric",month:"2-digit",day:"2-digit",hourCycle:"h23"}).formatToParts(date).map(x=>[x.type,x.value]));return {hour:+p.hour,minute:+p.minute,key:`${p.year}-${p.month}-${p.day}-${p.hour}`}}
+function nextCairoRun(now=new Date()){const p=Object.fromEntries(new Intl.DateTimeFormat("en-GB",{timeZone:"Africa/Cairo",hour:"2-digit",minute:"2-digit",year:"numeric",month:"2-digit",day:"2-digit",hourCycle:"h23"}).formatToParts(now).map(x=>[x.type,x.value]));const hours=[2,6,10,14,18,22],h=+p.hour,m=+p.minute;let next=hours.find(x=>x>h||(x===h&&m<1)),day=0;if(next===undefined){next=2;day=1}return new Date(Date.UTC(+p.year,+p.month-1,+p.day+day,next-2,0)).toISOString()}
+async function generateAutoContent(env,topic,category){
+ if(!env.GEMINI_API_KEY)throw Error("GEMINI_API_KEY غير مضبوط");
+ const prompt=`اكتب منشوراً عربياً أصيلاً لصفحة أقوال عن ${topic}. التصنيف: ${category}. اكتب 250 إلى 350 كلمة بعنوان جذاب ومقدمة وسرد واضح وخاتمة بسؤال تفاعلي. التزم بالدقة التاريخية والعلمية ولا تختلق تواريخ أو اقتباسات أو مصادر. أخرج النص فقط.`;
+ const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+GEMINI_MODEL+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":env.GEMINI_API_KEY},body:JSON.stringify({systemInstruction:{parts:[{text:"أنت محرر تاريخي وثقافي دقيق. لا تختلق معلومات."}]},contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{temperature:.75,maxOutputTokens:1800}})});
+ const d=await r.json();if(!r.ok)throw Error(d.error?.message||"فشل Gemini");const text=(d.candidates?.[0]?.content?.parts||[]).map(x=>x.text||"").join("").trim();if(!text)throw Error("Gemini لم يرجع محتوى");return text
 }
-
-function updatePreview(){
- const value=$("message").value;
- $("preview").textContent=value||"ستظهر المعاينة هنا أثناء الكتابة.";
- const count=value.trim()?value.trim().split(/\\s+/).length:0;
- $("wordCount").textContent=count+" كلمة";
+async function publishToFacebook(env,message){
+ if(!env.PAGE_ACCESS_TOKEN)throw Error("PAGE_ACCESS_TOKEN غير مضبوط");
+ const u=new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${PAGE_ID}/feed`);u.searchParams.set("message",message);u.searchParams.set("access_token",env.PAGE_ACCESS_TOKEN);
+ const r=await fetch(u,{method:"POST"}),d=await r.json();if(!r.ok||!d.id)throw Error(d.error?.message||"فشل النشر على Facebook");return d.id
 }
-$("message").addEventListener("input",updatePreview);
-
-async function checkConnection(){
- setStatus("connection","جاري فحص الاتصال...");
+async function runAutomaticPost(env,scheduledTime){
+ await ensureAutoSchema(env.DB);const setting=await env.DB.prepare("SELECT value FROM auto_settings WHERE key='enabled'").first();if(setting?.value!=="1")return;
+ const slot=cairoSlot(new Date(scheduledTime));if(slot.minute!==0||![2,6,10,14,18,22].includes(slot.hour))return;
+ try{await env.DB.prepare("INSERT INTO auto_runs (slot_key,status,message) VALUES (?,'running','بدأ تجهيز المنشور')").bind(slot.key).run()}catch(e){if(String(e.message||e).toLowerCase().includes("unique"))return;throw e}
+ let topic=null,category=null,postId=null;
  try{
-  const d=await call("/api/status");
-  setStatus("connection","متصل بصفحة "+d.page,"ok");
- }catch(e){
-  setStatus("connection",e.message,"err");
- }
-}
-
-async function loadStats(){
- try{
-  const d=await call("/api/stats");
-  $("total").textContent=d.total;
-  $("draftCount").textContent=d.drafts;
-  $("publishedCount").textContent=d.published;
- }catch(e){
-  $("total").textContent="—";
-  $("draftCount").textContent="—";
-  $("publishedCount").textContent="—";
- }
-}
-
-async function refreshAll(){
- await checkConnection();
- await loadStats();
- await loadDrafts();
-}
-
-async function generate(){
- const topic=$("topic").value.trim();
- if(!topic){
-  setStatus("aiStatus","اكتب موضوع المنشور أولاً","err");
-  return;
- }
- const btn=$("generateBtn");
- btn.disabled=true;
- btn.textContent="جاري إعداد المقال...";
- setStatus("aiStatus","Gemini يكتب المحتوى ويجهز المسودة...");
- try{
-  const d=await call("/api/generate","POST",{
-   topic,
-   category:$("category").value,
-   length:$("length").value,
-   extra:$("extra").value.trim()
-  });
-  $("message").value=d.content;
-  updatePreview();
-  setStatus("aiStatus","تم إنشاء المسودة وحفظها بنجاح. رقمها "+d.id,"ok");
-  await loadDrafts();
-  await loadStats();
- }catch(e){
-  setStatus("aiStatus","تعذر إنشاء المحتوى: "+e.message,"err");
- }finally{
-  btn.disabled=false;
-  btn.textContent="إنشاء المحتوى بالذكاء الاصطناعي";
- }
-}
-
-async function loadDrafts(){
- const box=$("drafts");
- box.textContent="جاري تحميل المسودات...";
- try{
-  const d=await call("/api/drafts");
-  box.replaceChildren();
-  if(!d.items.length){
-   box.textContent="لا توجد مسودات حالياً";
-   return;
-  }
-  d.items.forEach(p=>{
-   const card=document.createElement("div");
-   card.className="post";
-
-   const head=document.createElement("div");
-   head.className="post-head";
-
-   const title=document.createElement("strong");
-   title.textContent="مسودة رقم "+p.id;
-
-   const tag=document.createElement("span");
-   tag.className="tag";
-   tag.textContent=p.post_type||"محتوى";
-
-   head.append(title,tag);
-
-   const content=document.createElement("div");
-   content.className="post-content";
-   content.textContent=p.content;
-
-   const info=document.createElement("div");
-   info.className="muted";
-   info.textContent="تاريخ الحفظ: "+(p.created_at||"غير محدد");
-
-   const actions=document.createElement("div");
-   actions.className="actions";
-
-   const edit=document.createElement("button");
-   edit.className="secondary";
-   edit.textContent="تعديل";
-   edit.onclick=()=>{
-    $("message").value=p.content;
-    updatePreview();
-    window.scrollTo({top:$("message").getBoundingClientRect().top+window.scrollY-100,behavior:"smooth"});
-   };
-
-   const publish=document.createElement("button");
-   publish.className="primary";
-   publish.textContent="نشر";
-   publish.onclick=()=>publishDraft(p.id);
-
-   const del=document.createElement("button");
-   del.className="danger";
-   del.textContent="حذف";
-   del.onclick=()=>deleteDraft(p.id);
-
-   actions.append(edit,publish,del);
-   card.append(head,content,info,actions);
-   box.append(card);
-  });
- }catch(e){
-  box.textContent="تعذر تحميل المسودات: "+e.message;
- }
-}
-
-async function saveDraft(){
- const content=$("message").value.trim();
- if(!content){
-  alert("لا يوجد محتوى لحفظه");
-  return;
- }
- try{
-  const d=await call("/api/save-draft","POST",{
-   content,
-   category:$("category").value
-  });
-  setStatus("aiStatus","تم حفظ المسودة رقم "+d.id,"ok");
-  await loadDrafts();
-  await loadStats();
- }catch(e){
-  setStatus("aiStatus","فشل الحفظ: "+e.message,"err");
- }
-}
-
-async function deleteDraft(id){
- if(!confirm("هل تريد حذف هذه المسودة نهائياً؟"))return;
- try{
-  await call("/api/delete-draft","POST",{id});
-  await loadDrafts();
-  await loadStats();
- }catch(e){alert(e.message);}
-}
-
-async function publishDraft(id){
- if(!confirm("هل تريد نشر هذه المسودة على صفحة Facebook؟"))return;
- try{
-  const d=await call("/api/publish-draft","POST",{id});
-  alert("تم النشر بنجاح: "+d.id);
-  await loadDrafts();
-  await loadStats();
- }catch(e){alert("فشل النشر: "+e.message);}
-}
-
-async function publishText(){
- const message=$("message").value.trim();
- if(!message){
-  setStatus("publishStatus","اكتب المنشور أولاً","err");
-  return;
- }
- if(!confirm("تأكيد النشر الفعلي على صفحة أقوال؟"))return;
- setStatus("publishStatus","جاري النشر...");
- try{
-  const d=await call("/api/publish","POST",{message});
-  setStatus("publishStatus","تم النشر بنجاح. رقم المنشور: "+d.id,"ok");
-  await loadStats();
- }catch(e){
-  setStatus("publishStatus","فشل النشر: "+e.message,"err");
- }
-}
-
-async function copyText(){
- const value=$("message").value;
- if(!value){alert("لا يوجد نص لنسخه");return;}
- try{
-  await navigator.clipboard.writeText(value);
-  alert("تم نسخ النص");
- }catch(e){
-  $("message").select();
-  alert("حدد النص وانسخه يدوياً");
- }
-}
-
-function clearEditor(){
- if(!confirm("مسح النص الموجود في المحرر؟"))return;
- $("message").value="";
- updatePreview();
-}
-
-updatePreview();
-</script>
-</body>
-</html>`;
-
-function json(data,status=200){
- return Response.json(data,{status});
+  const old=await env.DB.prepare("SELECT topic FROM auto_topics ORDER BY id DESC LIMIT 30").all(),used=new Set((old.results||[]).map(x=>x.topic)),pool=TOPICS.filter(x=>!used.has(x[1])),choice=(pool.length?pool:TOPICS)[Math.floor(Math.random()*(pool.length||TOPICS.length))];
+  [category,topic]=choice;const content=await generateAutoContent(env,topic,category);
+  const saved=await env.DB.prepare("INSERT INTO posts (content,post_type,status) VALUES (?,?,'draft')").bind(content,category).run();postId=saved.meta.last_row_id;
+  const fbId=await publishToFacebook(env,content);
+  await env.DB.prepare("UPDATE posts SET status='published',facebook_post_id=?,published_at=CURRENT_TIMESTAMP WHERE id=?").bind(fbId,postId).run();
+  await env.DB.prepare("INSERT OR IGNORE INTO auto_topics (topic,category) VALUES (?,?)").bind(topic,category).run();
+  await env.DB.prepare("INSERT INTO publish_logs (post_id,result,message) VALUES (?,'success',?)").bind(postId,fbId).run();
+  await env.DB.prepare("UPDATE auto_runs SET status='success',post_id=?,topic=?,message=? WHERE slot_key=?").bind(postId,topic,"تم النشر: "+fbId,slot.key).run();
+ }catch(e){const msg=String(e.message||e).slice(0,900);await env.DB.prepare("INSERT INTO publish_logs (post_id,result,message) VALUES (?,'failed',?)").bind(postId,msg).run();await env.DB.prepare("UPDATE auto_runs SET status='failed',post_id=?,topic=?,message=? WHERE slot_key=?").bind(postId,topic,msg,slot.key).run();throw e}
 }
 
 export default {
+ async scheduled(event,env,ctx){ctx.waitUntil(runAutomaticPost(env,event.scheduledTime))},
  async fetch(request,env){
   const url=new URL(request.url);
+  if(url.pathname==="/"&&request.method==="GET")return new Response(html,{headers:{"Content-Type":"text/html; charset=utf-8"}});
+  if(!url.pathname.startsWith("/api/"))return new Response("Not Found",{status:404});
+  if(!env.ADMIN_KEY||request.headers.get("Authorization")!=="Bearer "+env.ADMIN_KEY)return json({ok:false,error:"مفتاح الإدارة غير صحيح"},401);
+  if(!env.DB)return json({ok:false,error:"قاعدة البيانات DB غير مربوطة"},500);
 
-  if(url.pathname==="/" && request.method==="GET"){
-   return new Response(html,{
-    headers:{"Content-Type":"text/html; charset=utf-8"}
-   });
-  }
+  if(url.pathname==="/api/status"&&request.method==="GET"){try{if(!env.PAGE_ACCESS_TOKEN)throw Error("PAGE_ACCESS_TOKEN غير موجود");const u=new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${PAGE_ID}`);u.searchParams.set("fields","id,name");u.searchParams.set("access_token",env.PAGE_ACCESS_TOKEN);const r=await fetch(u),d=await r.json();if(!r.ok)return json({ok:false,error:d.error?.message||"Facebook API error"},400);return json({ok:true,page:d.name,id:d.id})}catch(e){return json({ok:false,error:e.message},500)}}
 
-  if(!url.pathname.startsWith("/api/")){
-   return new Response("Not Found",{status:404});
-  }
+  if(url.pathname==="/api/stats"&&request.method==="GET"){try{const x=await env.DB.prepare("SELECT COUNT(*) total,SUM(CASE WHEN status='draft' THEN 1 ELSE 0 END) drafts,SUM(CASE WHEN status='published' THEN 1 ELSE 0 END) published FROM posts").first();return json({ok:true,total:x?.total||0,drafts:x?.drafts||0,published:x?.published||0})}catch(e){return json({ok:false,error:e.message},500)}}
 
-  const auth=request.headers.get("Authorization");
-  if(!env.ADMIN_KEY || auth!=="Bearer "+env.ADMIN_KEY){
-   return json({ok:false,error:"مفتاح الإدارة غير صحيح"},401);
-  }
+  if(url.pathname==="/api/auto/status"&&request.method==="GET"){try{await ensureAutoSchema(env.DB);const s=await env.DB.prepare("SELECT value FROM auto_settings WHERE key='enabled'").first(),logs=await env.DB.prepare("SELECT status,topic,message,created_at FROM auto_runs ORDER BY id DESC LIMIT 10").all();return json({ok:true,enabled:s?.value==="1",logs:logs.results||[],nextRun:nextCairoRun()})}catch(e){return json({ok:false,error:e.message},500)}}
+  if(url.pathname==="/api/auto/toggle"&&request.method==="POST"){try{await ensureAutoSchema(env.DB);const b=await request.json(),v=b.enabled===true?"1":"0";await env.DB.prepare("UPDATE auto_settings SET value=? WHERE key='enabled'").bind(v).run();return json({ok:true,enabled:v==="1"})}catch(e){return json({ok:false,error:e.message},500)}}
 
-  if(!env.DB){
-   return json({ok:false,error:"قاعدة البيانات DB غير مربوطة"},500);
-  }
+  if(url.pathname==="/api/generate"&&request.method==="POST"){try{
+   if(!env.GEMINI_API_KEY)throw Error("GEMINI_API_KEY غير موجود");const b=await request.json(),topic=String(b.topic||"").trim().slice(0,300),category=String(b.category||"محتوى ثقافي").slice(0,100),length=String(b.length||"400 إلى 600 كلمة"),extra=String(b.extra||"").slice(0,500);if(!topic)return json({ok:false,error:"اكتب موضوع المنشور"},400);
+   const prompt=`اكتب مقالاً عربياً لصفحة أقوال. الموضوع: ${topic}. التصنيف: ${category}. الطول: ${length}. تعليمات: ${extra||"لا توجد"}. ابدأ بعنوان جذاب ومقدمة مشوقة وسرد مترابط وخاتمة تفاعلية. لا تختلق تواريخ أو اقتباسات أو مصادر. استخدم العربية الفصحى المبسطة وأخرج المقال فقط.`;
+   const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+GEMINI_MODEL+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":env.GEMINI_API_KEY},body:JSON.stringify({systemInstruction:{parts:[{text:"أنت محرر تاريخي وثقافي محترف والدقة أهم من الإثارة."}]},contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{temperature:.75,maxOutputTokens:2500}})}),d=await r.json();if(!r.ok)throw Error(d.error?.message||"فشل Gemini");const content=(d.candidates?.[0]?.content?.parts||[]).map(x=>x.text||"").join("").trim();if(!content)throw Error("لم يرجع Gemini نصاً");const saved=await env.DB.prepare("INSERT INTO posts (content,post_type,status) VALUES (?,?,'draft')").bind(content,category).run();return json({ok:true,id:saved.meta.last_row_id,content})
+  }catch(e){return json({ok:false,error:e.message},500)}}
 
-  // Facebook connection
-  if(url.pathname==="/api/status" && request.method==="GET"){
-   try{
-    if(!env.PAGE_ACCESS_TOKEN) throw new Error("PAGE_ACCESS_TOKEN غير موجود");
-    const u=new URL("https://graph.facebook.com/"+GRAPH_VERSION+"/"+PAGE_ID);
-    u.searchParams.set("fields","id,name");
-    u.searchParams.set("access_token",env.PAGE_ACCESS_TOKEN);
-    const r=await fetch(u);
-    const d=await r.json();
-    if(!r.ok) return json({ok:false,error:d.error?.message||"Facebook API error"});
-    return json({ok:true,page:d.name,id:d.id});
-   }catch(e){
-    return json({ok:false,error:e.message},500);
-   }
-  }
-
-  // Dashboard statistics
-  if(url.pathname==="/api/stats" && request.method==="GET"){
-   try{
-    const row=await env.DB.prepare(
-     "SELECT COUNT(*) AS total,"+
-     "SUM(CASE WHEN status='draft' THEN 1 ELSE 0 END) AS drafts,"+
-     "SUM(CASE WHEN status='published' THEN 1 ELSE 0 END) AS published "+
-     "FROM posts"
-    ).first();
-    return json({
-     ok:true,
-     total:row?.total||0,
-     drafts:row?.drafts||0,
-     published:row?.published||0
-    });
-   }catch(e){return json({ok:false,error:e.message},500);}
-  }
-
-  // Generate content using Gemini
-  if(url.pathname==="/api/generate" && request.method==="POST"){
-   try{
-    if(!env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY غير موجود");
-
-    const body=await request.json();
-    const topic=String(body.topic||"").trim().slice(0,300);
-    const category=String(body.category||"محتوى ثقافي").slice(0,100);
-    const length=String(body.length||"400 إلى 600 كلمة").slice(0,50);
-    const extra=String(body.extra||"").slice(0,500);
-
-    if(!topic) return json({ok:false,error:"اكتب موضوع المنشور"},400);
-
-    const prompt=`
-أنت رئيس تحرير صفحة أقوال العربية المتخصصة في التاريخ والثقافة والقصص الإنسانية.
-
-الموضوع: ${topic}
-التصنيف: ${category}
-الطول المطلوب: ${length}
-تعليمات إضافية: ${extra||"لا توجد"}
-
-اكتب مقالاً عربياً متكاملاً وفق القواعد التالية:
-
-1. ابدأ بعنوان قوي وجذاب يثير الفضول دون تضليل.
-2. اكتب مقدمة أدبية تشد القارئ.
-3. قدم خلفية تاريخية وسياقاً واضحاً للموضوع.
-4. استخدم سرداً قصصياً متسلسلاً ومترابطاً.
-5. أضف تفاصيل وأمثلة ومعلومات ذات قيمة.
-6. اشرح أثر الشخصية أو الحدث في التاريخ.
-7. اختم بخلاصة وسؤال تفاعلي مناسب.
-8. التزم بالطول المطلوب فعلياً، ولا تختصر المقال.
-9. لا تكرر الأفكار لزيادة عدد الكلمات.
-10. لا تختلق أحداثاً أو تواريخ أو اقتباسات.
-11. لا تنسب قولاً إلى شخصية تاريخية دون تحقق.
-12. إذا كانت هناك روايات تاريخية متعارضة فوضح ذلك.
-13. استخدم العربية الفصحى المبسطة.
-14. لا تستخدم علامات Markdown مثل النجوم أو علامات العناوين.
-15. لا تكتب معلومات وهمية أو مصادر مختلقة.
-16. أخرج المقال النهائي فقط.
-
-يجب أن يكون النص مناسباً للنشر على صفحة Facebook ثقافية.
-`;
-
-    const ai=await fetch(
-     "https://generativelanguage.googleapis.com/v1beta/models/"+
-     GEMINI_MODEL+":generateContent",
-     {
-      method:"POST",
-      headers:{
-       "Content-Type":"application/json",
-       "x-goog-api-key":env.GEMINI_API_KEY
-      },
-      body:JSON.stringify({
-       systemInstruction:{
-        parts:[{
-         text:"أنت محرر تاريخي وثقافي محترف. الدقة أهم من الإثارة."
-        }]
-       },
-       contents:[{role:"user",parts:[{text:prompt}]}],
-       generationConfig:{
-        temperature:0.75,
-        maxOutputTokens:2500
-       }
-      })
-     }
-    );
-
-    const result=await ai.json();
-    if(!ai.ok){
-     throw new Error(result.error?.message||"فشل الاتصال بـ Gemini");
-    }
-
-    const content=(result.candidates?.[0]?.content?.parts||[])
-     .map(part=>part.text||"").join("").trim();
-
-    if(!content){
-     throw new Error("لم يرجع Gemini نصاً كاملاً");
-    }
-
-    const saved=await env.DB.prepare(
-     "INSERT INTO posts (content,post_type,status) VALUES (?,?,'draft')"
-    ).bind(content,category).run();
-
-    return json({
-     ok:true,
-     id:saved.meta.last_row_id,
-     content
-    });
-
-   }catch(e){
-    return json({ok:false,error:e.message},500);
-   }
-  }
-
-  // Save edited draft
-  if(url.pathname==="/api/save-draft" && request.method==="POST"){
-   try{
-    const body=await request.json();
-    const content=String(body.content||"").trim();
-    const category=String(body.category||"محتوى").slice(0,100);
-    if(!content) return json({ok:false,error:"المحتوى فارغ"},400);
-
-    const saved=await env.DB.prepare(
-     "INSERT INTO posts (content,post_type,status) VALUES (?,?,'draft')"
-    ).bind(content,category).run();
-
-    return json({ok:true,id:saved.meta.last_row_id});
-   }catch(e){return json({ok:false,error:e.message},500);}
-  }
-
-  // List drafts
-  if(url.pathname==="/api/drafts" && request.method==="GET"){
-   try{
-    const result=await env.DB.prepare(
-     "SELECT id,content,post_type,created_at FROM posts "+
-     "WHERE status='draft' ORDER BY id DESC LIMIT 50"
-    ).all();
-    return json({ok:true,items:result.results||[]});
-   }catch(e){return json({ok:false,error:e.message},500);}
-  }
-
-  // Delete draft only
-  if(url.pathname==="/api/delete-draft" && request.method==="POST"){
-   try{
-    const body=await request.json();
-    const id=Number(body.id);
-    if(!Number.isInteger(id)||id<1){
-     return json({ok:false,error:"رقم المسودة غير صحيح"},400);
-    }
-    const result=await env.DB.prepare(
-     "DELETE FROM posts WHERE id=? AND status='draft'"
-    ).bind(id).run();
-    if(!result.meta.changes){
-     return json({ok:false,error:"المسودة غير موجودة"},404);
-    }
-    return json({ok:true});
-   }catch(e){return json({ok:false,error:e.message},500);}
-  }
-
-  // Publish saved draft
-  if(url.pathname==="/api/publish-draft" && request.method==="POST"){
-   try{
-    const body=await request.json();
-    const id=Number(body.id);
-    if(!Number.isInteger(id)||id<1){
-     return json({ok:false,error:"رقم المسودة غير صحيح"},400);
-    }
-
-    const post=await env.DB.prepare(
-     "SELECT id,content,status FROM posts WHERE id=?"
-    ).bind(id).first();
-
-    if(!post||post.status!=="draft"){
-     return json({ok:false,error:"المسودة غير موجودة أو سبق نشرها"},404);
-    }
-
-    const u=new URL("https://graph.facebook.com/"+GRAPH_VERSION+"/"+PAGE_ID+"/feed");
-    u.searchParams.set("message",post.content);
-    u.searchParams.set("access_token",env.PAGE_ACCESS_TOKEN);
-
-    const r=await fetch(u,{method:"POST"});
-    const d=await r.json();
-
-    if(!r.ok){
-     await env.DB.prepare(
-      "INSERT INTO publish_logs (post_id,result,message) VALUES (?, 'failed',?)"
-     ).bind(id,d.error?.message||"Facebook error").run();
-     return json({ok:false,error:d.error?.message||"فشل النشر"},400);
-    }
-
-    await env.DB.prepare(
-     "UPDATE posts SET status='published',facebook_post_id=?,"+
-     "published_at=CURRENT_TIMESTAMP WHERE id=?"
-    ).bind(d.id,id).run();
-
-    await env.DB.prepare(
-     "INSERT INTO publish_logs (post_id,result,message) VALUES (?, 'success',?)"
-    ).bind(id,d.id).run();
-
-    return json({ok:true,id:d.id});
-   }catch(e){return json({ok:false,error:e.message},500);}
-  }
-
-  // Direct publishing
-  if(url.pathname==="/api/publish" && request.method==="POST"){
-   try{
-    const body=await request.json();
-    const message=String(body.message||"").trim();
-    if(!message) return json({ok:false,error:"نص المنشور فارغ"},400);
-
-    const u=new URL("https://graph.facebook.com/"+GRAPH_VERSION+"/"+PAGE_ID+"/feed");
-    u.searchParams.set("message",message);
-    u.searchParams.set("access_token",env.PAGE_ACCESS_TOKEN);
-
-    const r=await fetch(u,{method:"POST"});
-    const d=await r.json();
-
-    if(!r.ok){
-     return json({ok:false,error:d.error?.message||"فشل النشر"},400);
-    }
-
-    await env.DB.prepare(
-     "INSERT INTO posts (content,status,facebook_post_id,published_at) "+
-     "VALUES (?, 'published',?,CURRENT_TIMESTAMP)"
-    ).bind(message,d.id).run();
-
-    await env.DB.prepare(
-     "INSERT INTO publish_logs (result,message) VALUES ('success',?)"
-    ).bind(d.id).run();
-
-    return json({ok:true,id:d.id});
-   }catch(e){return json({ok:false,error:e.message},500);}
-  }
-
+  if(url.pathname==="/api/save-draft"&&request.method==="POST"){try{const b=await request.json(),content=String(b.content||"").trim(),category=String(b.category||"محتوى");if(!content)return json({ok:false,error:"المحتوى فارغ"},400);const x=await env.DB.prepare("INSERT INTO posts (content,post_type,status) VALUES (?,?,'draft')").bind(content,category).run();return json({ok:true,id:x.meta.last_row_id})}catch(e){return json({ok:false,error:e.message},500)}}
+  if(url.pathname==="/api/drafts"&&request.method==="GET"){try{const x=await env.DB.prepare("SELECT id,content,post_type,created_at FROM posts WHERE status='draft' ORDER BY id DESC LIMIT 50").all();return json({ok:true,items:x.results||[]})}catch(e){return json({ok:false,error:e.message},500)}}
+  if(url.pathname==="/api/delete-draft"&&request.method==="POST"){try{const id=Number((await request.json()).id);if(!Number.isInteger(id)||id<1)return json({ok:false,error:"رقم المسودة غير صحيح"},400);const x=await env.DB.prepare("DELETE FROM posts WHERE id=? AND status='draft'").bind(id).run();if(!x.meta.changes)return json({ok:false,error:"المسودة غير موجودة"},404);return json({ok:true})}catch(e){return json({ok:false,error:e.message},500)}}
+  if(url.pathname==="/api/publish-draft"&&request.method==="POST"){try{const id=Number((await request.json()).id),p=await env.DB.prepare("SELECT id,content,status FROM posts WHERE id=?").bind(id).first();if(!p||p.status!=="draft")return json({ok:false,error:"المسودة غير موجودة أو سبق نشرها"},404);const fb=await publishToFacebook(env,p.content);await env.DB.prepare("UPDATE posts SET status='published',facebook_post_id=?,published_at=CURRENT_TIMESTAMP WHERE id=?").bind(fb,id).run();await env.DB.prepare("INSERT INTO publish_logs (post_id,result,message) VALUES (?,'success',?)").bind(id,fb).run();return json({ok:true,id:fb})}catch(e){return json({ok:false,error:e.message},500)}}
+  if(url.pathname==="/api/publish"&&request.method==="POST"){try{const message=String((await request.json()).message||"").trim();if(!message)return json({ok:false,error:"نص المنشور فارغ"},400);const fb=await publishToFacebook(env,message);await env.DB.prepare("INSERT INTO posts (content,status,facebook_post_id,published_at) VALUES (?,'published',?,CURRENT_TIMESTAMP)").bind(message,fb).run();await env.DB.prepare("INSERT INTO publish_logs (result,message) VALUES ('success',?)").bind(fb).run();return json({ok:true,id:fb})}catch(e){return json({ok:false,error:e.message},500)}}
   return new Response("Not Found",{status:404});
  }
 };
- 
