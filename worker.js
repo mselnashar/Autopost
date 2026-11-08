@@ -97,7 +97,9 @@ async function check(){
  s.textContent="جاري الفحص...";
  try{
   const d=await call("/api/status");
-  s.textContent=d.ok?"متصل بصفحة "+d.page:"تعذر الاتصال";
+s.textContent=d.ok
+ ? "متصل بصفحة "+d.page
+ : "خطأ Facebook: "+(d.error||"سبب غير معروف");
  }catch(e){s.textContent=e.message;}
 }
 async function generate(){
