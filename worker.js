@@ -42,10 +42,46 @@ function cairoSlot(date){const p=Object.fromEntries(new Intl.DateTimeFormat("en-
 function nextCairoRun(now=new Date()){const p=Object.fromEntries(new Intl.DateTimeFormat("en-GB",{timeZone:"Africa/Cairo",hour:"2-digit",minute:"2-digit",year:"numeric",month:"2-digit",day:"2-digit",hourCycle:"h23"}).formatToParts(now).map(x=>[x.type,x.value]));const hours=[2,6,10,14,18,22],h=+p.hour,m=+p.minute;let next=hours.find(x=>x>h||(x===h&&m<1)),day=0;if(next===undefined){next=2;day=1}return new Date(Date.UTC(+p.year,+p.month-1,+p.day+day,next-2,0)).toISOString()}
 async function generateAutoContent(env,topic,category){
  if(!env.GEMINI_API_KEY)throw Error("GEMINI_API_KEY غير مضبوط");
- const prompt=`اكتب منشوراً عربياً أصيلاً لصفحة أقوال عن ${topic}. التصنيف: ${category}. اكتب 250 إلى 350 كلمة بعنوان جذاب ومقدمة وسرد واضح وخاتمة بسؤال تفاعلي. التزم بالدقة التاريخية والعلمية ولا تختلق تواريخ أو اقتباسات أو مصادر. أخرج النص فقط.`;
- const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+GEMINI_MODEL+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":env.GEMINI_API_KEY},body:JSON.stringify({systemInstruction:{parts:[{text:"أنت محرر تاريخي وثقافي دقيق. لا تختلق معلومات."}]},contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{temperature:.75,maxOutputTokens:1800}})});
- const d=await r.json();if(!r.ok)throw Error(d.error?.message||"فشل Gemini");const text=(d.candidates?.[0]?.content?.parts||[]).map(x=>x.text||"").join("").trim();if(!text)throw Error("Gemini لم يرجع محتوى");return text
-}
+
+ const prompt=`اكتب منشور معلومات قصيراً لصفحة أقوال عن: ${topic}.
+التصنيف: ${category}.
+
+الشروط:
+- من 40 إلى 80 كلمة فقط.
+- معلومة واحدة محددة ومفيدة.
+- عنوان قصير وجذاب.
+- شرح مباشر بلغة عربية سهلة.
+- دون مقدمات إنشائية أو حشو أو تكرار.
+- لا تختلق أرقاماً أو تواريخ أو اقتباسات.
+- اختم بوسمين مناسبين كحد أقصى.
+- أخرج المنشور فقط.`;
+
+ const r=await fetch(
+ "https://generativelanguage.googleapis.com/v1beta/models/"+GEMINI_MODEL+":generateContent",
+ {
+  method:"POST",
+  headers:{
+   "Content-Type":"application/json",
+   "x-goog-api-key":env.GEMINI_API_KEY
+  },
+  body:JSON.stringify({
+   systemInstruction:{
+    parts:[{text:"أنت محرر معلوماتي دقيق. الأولوية لصحة المعلومة واختصارها ومنع الحشو."}]
+   },
+   contents:[{role:"user",parts:[{text:prompt}]}],
+   generationConfig:{temperature:.35,maxOutputTokens:350}
+  })
+ });
+
+ const d=await r.json();
+ if(!r.ok)throw Error(d.error?.message||"فشل Gemini");
+
+ const result=(d.candidates?.[0]?.content?.parts||[])
+ .map(x=>x.text||"").join("").trim();
+
+ if(!result)throw Error("Gemini لم يرجع محتوى");
+ return result;
+ }
 async function publishToFacebook(env,message){
  if(!env.PAGE_ACCESS_TOKEN)throw Error("PAGE_ACCESS_TOKEN غير مضبوط");
  const u=new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${PAGE_ID}/feed`);u.searchParams.set("message",message);u.searchParams.set("access_token",env.PAGE_ACCESS_TOKEN);
