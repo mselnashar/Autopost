@@ -767,9 +767,11 @@ if (url.pathname === "/api/test-image" && request.method === "POST") {
  }
   if (url.pathname === "/api/drafts" && request.method === "GET") {
    try {
-    const x = await env.DB.prepare(
-     "SELECT id,content,post_type,created_at FROM posts WHERE status='draft' ORDER BY id DESC LIMIT 50"
-    ).all();
+    await ensurePostImageColumns(env.DB);
+
+const x = await env.DB.prepare(
+ "SELECT id,content,post_type,created_at,image_url,image_page,image_author,image_license FROM posts WHERE status='draft' ORDER BY id DESC LIMIT 50"
+).all();
 
     return json({ ok: true, items: x.results || [] });
    } catch (e) {
