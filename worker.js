@@ -514,7 +514,7 @@ button.secondary{background:#f0ecf6;color:var(--d);padding:9px 13px;border-radiu
 
 <div class="footer">أقوال © مركز إدارة المحتوى</div>
 </main>
-<script src="https://raw.githubusercontent.com/mselnashar/Autopost/main/app.js?v=20261109" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js?v=20261109b" defer></script>
 </body>
 </html>`;
 
