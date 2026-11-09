@@ -82,6 +82,82 @@ async function generateAutoContent(env,topic,category){
  if(!result)throw Error("Gemini لم يرجع محتوى");
  return result;
  }
+async function findTopicImage(topic) {
+  const api = new URL("https://commons.wikimedia.org/w/api.php");
+
+  api.search = new URLSearchParams({
+    action: "query",
+    generator: "search",
+    gsrsearch: topic,
+    gsrnamespace: "6",
+    gsrlimit: "8",
+    prop: "imageinfo",
+    iiprop: "url|extmetadata",
+    iiurlwidth: "1200",
+    format: "json"
+  }).toString();
+
+  const response = await fetch(api, {
+    headers: { "User-Agent": "AqwalBot/1.0" }
+  });
+
+  if (!response.ok) throw Error("تعذر البحث عن الصور");
+
+  const data = await response.json();
+  const pages = Object.values(data.query?.pages || {});
+
+  const image = pages.find(p => {
+    const info = p.imageinfo?.[0];
+    return info?.thumburl &&
+      /\.(jpg|jpeg|png|webp)(\?|$)/i.test(info.thumburl);
+  });
+
+  if (!image) throw Error("لم يتم العثور على صورة مناسبة");
+
+  const info = image.imageinfo[0];
+  const meta = info.extmetadata || {};
+
+  const clean = value =>
+    String(value || "").replace(/<[^>]*>/g, "").trim();
+
+  return {
+    url: info.thumburl,
+    page: info.descriptionurl,
+    author: clean(meta.Artist?.value),
+    license: clean(meta.LicenseShortName?.value)
+  };
+}
+
+async function publishPhotoToFacebook(env, message, image) {
+  const response = await fetch(image.url);
+
+  if (!response.ok) throw Error("تعذر تحميل الصورة");
+
+  const blob = await response.blob();
+
+  const form = new FormData();
+  form.set("source", blob, "aqwal-image.jpg");
+  form.set("caption",
+    message +
+    "\n\nمصدر الصورة: " + image.page +
+    (image.author ? "\nصاحب الصورة: " + image.author : "") +
+    (image.license ? "\nالترخيص: " + image.license : "")
+  );
+  form.set("access_token", env.PAGE_ACCESS_TOKEN);
+
+  const result = await fetch(
+    `https://graph.facebook.com/${GRAPH_VERSION}/${PAGE_ID}/photos`,
+    { method: "POST", body: form }
+  );
+
+  const data = await result.json();
+
+  if (!result.ok || !data.id) {
+    throw Error(data.error?.message || "فشل نشر الصورة");
+  }
+
+  return data.post_id || data.id;
+}
 async function publishToFacebook(env,message){
  if(!env.PAGE_ACCESS_TOKEN)throw Error("PAGE_ACCESS_TOKEN غير مضبوط");
  const u=new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${PAGE_ID}/feed`);u.searchParams.set("message",message);u.searchParams.set("access_token",env.PAGE_ACCESS_TOKEN);
