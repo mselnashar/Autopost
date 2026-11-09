@@ -1,7 +1,19 @@
-const PAGE_ID = "282216368809712";
+/* أقوال — بوت النشر التلقائي على صفحة فيسبوك
+ * Cloudflare Worker + D1 + Gemini + Wikimedia Commons
+ *
+ * المتغيرات المطلوبة (wrangler secret put):
+ *   ADMIN_KEY           مفتاح لوحة التحكم
+ *   GEMINI_API_KEY      مفتاح Gemini
+ *   PAGE_ACCESS_TOKEN   توكن صفحة فيسبوك
+ * المتغيرات الاختيارية:
+ *   FB_PAGE_ID          رقم الصفحة (الافتراضي: القيمة القديمة أدناه)
+ *   GEMINI_MODEL        نموذج Gemini (الافتراضي: gemini-3.5-flash-lite)
+ */
+
+const DEFAULT_PAGE_ID = "282216368809712";
 const GRAPH_VERSION = "v27.0";
-const 
-GEMINI_MODEL = "gemini-3.5-flash-lite";
+const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
+const CAIRO_HOURS = [2, 6, 10, 14, 18, 22];
 
 const TOPICS = [
  ["تاريخ مصر","الحياة اليومية في مصر القديمة"],
@@ -24,22 +36,47 @@ const TOPICS = [
 function json(data, status = 200) {
  return Response.json(data, { status });
 }
-async function ensurePostImageColumns(DB) {
- const result = await DB.prepare("PRAGMA table_info(posts)").all();
- const existing = new Set((result.results || []).map(c => c.name));
 
- for (const [name, type] of [
-  ["image_url", "TEXT"],
-  ["image_page", "TEXT"],
-  ["image_author", "TEXT"],
-  ["image_license", "TEXT"]
- ]) {
-  if (!existing.has(name)) {
-   await DB.prepare(`ALTER TABLE posts ADD COLUMN ${name} ${type}`).run();
-  }
- }
+function pageId(env) {
+ return env.FB_PAGE_ID || DEFAULT_PAGE_ID;
 }
+
+/* ---------- قاعدة البيانات ---------- */
+
+async function ensurePostsSchema(DB) {
+ await DB.prepare(
+  `CREATE TABLE IF NOT EXISTS posts (
+   id INTEGER PRIMARY KEY AUTOINCREMENT,
+   content TEXT NOT NULL,
+   post_type TEXT,
+   status TEXT NOT NULL DEFAULT 'draft',
+   facebook_post_id TEXT,
+   published_at DATETIME,
+   image_url TEXT,
+   image_page TEXT,
+   image_author TEXT,
+   image_license TEXT,
+   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`
+ ).run();
+}
+
+async function ensurePublishLogsSchema(DB) {
+ await DB.prepare(
+  `CREATE TABLE IF NOT EXISTS publish_logs (
+   id INTEGER PRIMARY KEY AUTOINCREMENT,
+   post_id INTEGER,
+   result TEXT NOT NULL,
+   message TEXT,
+   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`
+ ).run();
+}
+
 async function ensureAutoSchema(DB) {
+ await ensurePostsSchema(DB);
+ await ensurePublishLogsSchema(DB);
+
  await DB.prepare(
   "CREATE TABLE IF NOT EXISTS auto_settings (key TEXT PRIMARY KEY,value TEXT NOT NULL)"
  ).run();
@@ -57,8 +94,10 @@ async function ensureAutoSchema(DB) {
  ).run();
 }
 
-function cairoSlot(date) {
- const p = Object.fromEntries(
+/* ---------- التوقيت (بتوقيت القاهرة) ---------- */
+
+function cairoParts(date) {
+ return Object.fromEntries(
   new Intl.DateTimeFormat("en-GB", {
    timeZone: "Africa/Cairo",
    hour: "2-digit",
@@ -69,7 +108,10 @@ function cairoSlot(date) {
    hourCycle: "h23"
   }).formatToParts(date).map(x => [x.type, x.value])
  );
+}
 
+function cairoSlot(date) {
+ const p = cairoParts(date);
  return {
   hour: +p.hour,
   minute: +p.minute,
@@ -78,27 +120,15 @@ function cairoSlot(date) {
 }
 
 function nextCairoRun(now = new Date()) {
- const p = Object.fromEntries(
-  new Intl.DateTimeFormat("en-GB", {
-   timeZone: "Africa/Cairo",
-   hour: "2-digit",
-   minute: "2-digit",
-   year: "numeric",
-   month: "2-digit",
-   day: "2-digit",
-   hourCycle: "h23"
-  }).formatToParts(now).map(x => [x.type, x.value])
- );
-
- const hours = [2, 6, 10, 14, 18, 22];
+ const p = cairoParts(now);
  const h = +p.hour;
  const m = +p.minute;
 
- let next = hours.find(x => x > h || (x === h && m < 1));
+ let next = CAIRO_HOURS.find(x => x > h || (x === h && m < 1));
  let day = 0;
 
  if (next === undefined) {
-  next = 2;
+  next = CAIRO_HOURS[0];
   day = 1;
  }
 
@@ -107,7 +137,7 @@ function nextCairoRun(now = new Date()) {
  ).toISOString();
 }
 
-/* إنشاء منشور قصير */
+/* ---------- توليد المحتوى عبر Gemini ---------- */
 
 async function generateAutoContent(env, topic, category) {
  if (!env.GEMINI_API_KEY) {
@@ -129,7 +159,7 @@ async function generateAutoContent(env, topic, category) {
 
  const r = await fetch(
   "https://generativelanguage.googleapis.com/v1beta/models/" +
-  GEMINI_MODEL + ":generateContent",
+  (env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL) + ":generateContent",
   {
    method: "POST",
    headers: {
@@ -167,7 +197,7 @@ async function generateAutoContent(env, topic, category) {
  return result;
 }
 
-/* البحث عن صورة مرتبطة بالموضوع */
+/* ---------- البحث عن صورة مرتبطة بالموضوع ---------- */
 
 async function findTopicImage(topic) {
  const api = new URL("https://commons.wikimedia.org/w/api.php");
@@ -195,8 +225,7 @@ async function findTopicImage(topic) {
 
  const image = pages.find(p => {
   const info = p.imageinfo?.[0];
-  return info?.thumburl &&
-   info?.descriptionurl;
+  return info?.thumburl && info?.descriptionurl;
  });
 
  if (!image) {
@@ -217,7 +246,7 @@ async function findTopicImage(topic) {
  };
 }
 
-/* نشر المنشور مع الصورة */
+/* ---------- النشر على فيسبوك ---------- */
 
 async function publishPhotoToFacebook(env, message, image) {
  if (!env.PAGE_ACCESS_TOKEN) {
@@ -252,7 +281,7 @@ async function publishPhotoToFacebook(env, message, image) {
  form.set("access_token", env.PAGE_ACCESS_TOKEN);
 
  const result = await fetch(
-  `https://graph.facebook.com/${GRAPH_VERSION}/${PAGE_ID}/photos`,
+  `https://graph.facebook.com/${GRAPH_VERSION}/${pageId(env)}/photos`,
   {
    method: "POST",
    body: form
@@ -268,15 +297,13 @@ async function publishPhotoToFacebook(env, message, image) {
  return data.post_id || data.id;
 }
 
-/* النشر النصي العادي */
-
 async function publishToFacebook(env, message) {
  if (!env.PAGE_ACCESS_TOKEN) {
   throw Error("PAGE_ACCESS_TOKEN غير مضبوط");
  }
 
  const u = new URL(
-  `https://graph.facebook.com/${GRAPH_VERSION}/${PAGE_ID}/feed`
+  `https://graph.facebook.com/${GRAPH_VERSION}/${pageId(env)}/feed`
  );
 
  u.searchParams.set("message", message);
@@ -292,7 +319,19 @@ async function publishToFacebook(env, message) {
  return d.id;
 }
 
-/* تشغيل النشر التلقائي */
+/* نشر منشور مع صورة إن وُجدت، وإلا نصي */
+async function publishPost(env, content, image) {
+ if (image?.url) {
+  try {
+   return await publishPhotoToFacebook(env, content, image);
+  } catch (e) {
+   console.log("Photo publish failed, fallback to text:", e.message);
+  }
+ }
+ return publishToFacebook(env, content);
+}
+
+/* ---------- تشغيل النشر التلقائي ---------- */
 
 async function runAutomaticPost(env, scheduledTime) {
  await ensureAutoSchema(env.DB);
@@ -305,10 +344,7 @@ async function runAutomaticPost(env, scheduledTime) {
 
  const slot = cairoSlot(new Date(scheduledTime));
 
- if (
-  slot.minute !== 0 ||
-  ![2, 6, 10, 14, 18, 22].includes(slot.hour)
- ) return;
+ if (slot.minute !== 0 || !CAIRO_HOURS.includes(slot.hour)) return;
 
  try {
   await env.DB.prepare(
@@ -328,9 +364,7 @@ async function runAutomaticPost(env, scheduledTime) {
    "SELECT topic FROM auto_topics ORDER BY id DESC LIMIT 30"
   ).all();
 
-  const used = new Set(
-   (old.results || []).map(x => x.topic)
-  );
+  const used = new Set((old.results || []).map(x => x.topic));
 
   const pool = TOPICS.filter(x => !used.has(x[1]));
 
@@ -343,44 +377,32 @@ async function runAutomaticPost(env, scheduledTime) {
   /* إنشاء المحتوى */
   const content = await generateAutoContent(env, topic, category);
 
-  /* البحث عن الصورة */
-  const image = await findTopicImage(topic);
+  /* البحث عن الصورة (اختياري — لا يوقف النشر إن غابت) */
+  let image = null;
+  try {
+   image = await findTopicImage(topic);
+  } catch (e) {
+   console.log("Image search:", e.message);
+  }
 
   /* حفظ المسودة */
-await ensurePostImageColumns(env.DB);
-
-let image = null;
-
-try {
- image = await findTopicImage(topic);
-} catch (e) {
- console.log("Image search:", e.message);
-}
-
-const saved = await env.DB.prepare(
- `INSERT INTO posts
- (content,post_type,status,image_url,image_page,image_author,image_license)
- VALUES (?,?,'draft',?,?,?,?)`
-).bind(
- content,
- category,
- image?.url || null,
- image?.page || null,
- image?.author || null,
- image?.license || null
-).run();
-
-return json({
- ok: true,
- id: saved.meta.last_row_id,
- content,
- image
-});
+  const saved = await env.DB.prepare(
+   `INSERT INTO posts
+    (content,post_type,status,image_url,image_page,image_author,image_license)
+    VALUES (?,?,'draft',?,?,?,?)`
+  ).bind(
+   content,
+   category,
+   image?.url || null,
+   image?.page || null,
+   image?.author || null,
+   image?.license || null
+  ).run();
 
   postId = saved.meta.last_row_id;
 
-  /* نشر النص والصورة معاً */
-  const fbId = await publishPhotoToFacebook(env, content, image);
+  /* النشر */
+  const fbId = await publishPost(env, content, image);
 
   /* تحديث حالة المنشور */
   await env.DB.prepare(
@@ -397,8 +419,7 @@ return json({
 
   await env.DB.prepare(
    "UPDATE auto_runs SET status='success',post_id=?,topic=?,message=? WHERE slot_key=?"
-  ).bind(postId, topic, "تم النشر بالصورة: " + fbId, slot.key).run();
-
+  ).bind(postId, topic, "تم النشر: " + fbId, slot.key).run();
  } catch (e) {
   const msg = String(e.message || e).slice(0, 900);
 
@@ -555,7 +576,7 @@ button.secondary{background:#f0ecf6;color:var(--d);padding:9px 13px;border-radiu
 
 <div class="footer">أقوال © مركز إدارة المحتوى</div>
 </main>
-<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js?v=20261109b" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js?v=20261109c" defer></script>
 </body>
 </html>`;
 
@@ -579,10 +600,11 @@ export default {
    return new Response("Not Found", { status: 404 });
   }
 
-  if (
-   !env.ADMIN_KEY ||
-   request.headers.get("Authorization") !== "Bearer " + env.ADMIN_KEY
-  ) {
+  if (!env.ADMIN_KEY) {
+   return json({ ok: false, error: "ADMIN_KEY غير مضبوط على الخادم" }, 500);
+  }
+
+  if (request.headers.get("Authorization") !== "Bearer " + env.ADMIN_KEY) {
    return json({ ok: false, error: "مفتاح الإدارة غير صحيح" }, 401);
   }
 
@@ -595,7 +617,7 @@ export default {
     if (!env.PAGE_ACCESS_TOKEN) throw Error("PAGE_ACCESS_TOKEN غير موجود");
 
     const u = new URL(
-     `https://graph.facebook.com/${GRAPH_VERSION}/${PAGE_ID}`
+     `https://graph.facebook.com/${GRAPH_VERSION}/${pageId(env)}`
     );
 
     u.searchParams.set("fields", "id,name");
@@ -616,6 +638,8 @@ export default {
 
   if (url.pathname === "/api/stats" && request.method === "GET") {
    try {
+    await ensurePostsSchema(env.DB);
+
     const x = await env.DB.prepare(
      "SELECT COUNT(*) total,SUM(CASE WHEN status='draft' THEN 1 ELSE 0 END) drafts,SUM(CASE WHEN status='published' THEN 1 ELSE 0 END) published FROM posts"
     ).first();
@@ -686,7 +710,7 @@ export default {
 
     const r = await fetch(
      "https://generativelanguage.googleapis.com/v1beta/models/" +
-     GEMINI_MODEL + ":generateContent",
+     (env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL) + ":generateContent",
      {
       method: "POST",
       headers: {
@@ -715,6 +739,8 @@ export default {
 
     if (!content) throw Error("لم يرجع Gemini نصاً");
 
+    await ensurePostsSchema(env.DB);
+
     const saved = await env.DB.prepare(
      "INSERT INTO posts (content,post_type,status) VALUES (?,?,'draft')"
     ).bind(content, category).run();
@@ -733,6 +759,8 @@ export default {
 
     if (!content) return json({ ok: false, error: "المحتوى فارغ" }, 400);
 
+    await ensurePostsSchema(env.DB);
+
     const x = await env.DB.prepare(
      "INSERT INTO posts (content,post_type,status) VALUES (?,?,'draft')"
     ).bind(content, category).run();
@@ -742,36 +770,31 @@ export default {
     return json({ ok: false, error: e.message }, 500);
    }
   }
-if (url.pathname === "/api/test-image" && request.method === "POST") {
- try {
-  const body = await request.json();
-  const topic = String(body.topic || "").trim();
 
-  if (!topic) {
-   return json({ ok: false, error: "اكتب موضوع البحث" }, 400);
+  if (url.pathname === "/api/test-image" && request.method === "POST") {
+   try {
+    const body = await request.json();
+    const topic = String(body.topic || "").trim();
+
+    if (!topic) {
+     return json({ ok: false, error: "اكتب موضوع البحث" }, 400);
+    }
+
+    const image = await findTopicImage(topic);
+
+    return json({ ok: true, topic, image });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
   }
 
-  const image = await findTopicImage(topic);
-
-  return json({
-   ok: true,
-   topic,
-   image
-  });
- } catch (e) {
-  return json({
-   ok: false,
-   error: e.message
-  }, 500);
- }
- }
   if (url.pathname === "/api/drafts" && request.method === "GET") {
    try {
-    await ensurePostImageColumns(env.DB);
+    await ensurePostsSchema(env.DB);
 
-const x = await env.DB.prepare(
- "SELECT id,content,post_type,created_at,image_url,image_page,image_author,image_license FROM posts WHERE status='draft' ORDER BY id DESC LIMIT 50"
-).all();
+    const x = await env.DB.prepare(
+     "SELECT id,content,post_type,created_at,image_url,image_page,image_author,image_license FROM posts WHERE status='draft' ORDER BY id DESC LIMIT 50"
+    ).all();
 
     return json({ ok: true, items: x.results || [] });
    } catch (e) {
@@ -805,15 +828,22 @@ const x = await env.DB.prepare(
    try {
     const id = Number((await request.json()).id);
 
+    await ensurePostsSchema(env.DB);
+
     const p = await env.DB.prepare(
-     "SELECT id,content,status FROM posts WHERE id=?"
+     "SELECT id,content,status,image_url,image_page,image_author,image_license FROM posts WHERE id=?"
     ).bind(id).first();
 
     if (!p || p.status !== "draft") {
      return json({ ok: false, error: "المسودة غير موجودة أو سبق نشرها" }, 404);
     }
 
-    const fb = await publishToFacebook(env, p.content);
+    /* نشر بالصورة إن وُجدت، وإلا نصي */
+    const image = p.image_url
+     ? { url: p.image_url, page: p.image_page, author: p.image_author, license: p.image_license }
+     : null;
+
+    const fb = await publishPost(env, p.content, image);
 
     await env.DB.prepare(
      "UPDATE posts SET status='published',facebook_post_id=?,published_at=CURRENT_TIMESTAMP WHERE id=?"
@@ -836,6 +866,8 @@ const x = await env.DB.prepare(
     if (!message) return json({ ok: false, error: "نص المنشور فارغ" }, 400);
 
     const fb = await publishToFacebook(env, message);
+
+    await ensurePostsSchema(env.DB);
 
     await env.DB.prepare(
      "INSERT INTO posts (content,status,facebook_post_id,published_at) VALUES (?,'published',?,CURRENT_TIMESTAMP)"
