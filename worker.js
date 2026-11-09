@@ -85,22 +85,45 @@ async function generateAutoContent(env,topic,category){
 async function findTopicImage(topic) {
   const api = new URL("https://commons.wikimedia.org/w/api.php");
 
-  api.search = new URLSearchParams({
-    action: "query",
-    generator: "search",
-    gsrsearch: topic,
-    gsrnamespace: "6",
-    gsrlimit: "8",
-    prop: "imageinfo",
-    iiprop: "url|extmetadata",
-    iiurlwidth: "1200",
-    format: "json"
-  }).toString();
+  api.searchParams.set("action", "query");
+  api.searchParams.set("generator", "search");
+  api.searchParams.set("gsrsearch", topic);
+  api.searchParams.set("gsrnamespace", "6");
+  api.searchParams.set("gsrlimit", "8");
+  api.searchParams.set("prop", "imageinfo");
+  api.searchParams.set("iiprop", "url|extmetadata");
+  api.searchParams.set("iiurlwidth", "1200");
+  api.searchParams.set("format", "json");
 
   const response = await fetch(api, {
     headers: { "User-Agent": "AqwalBot/1.0" }
   });
 
+  if (!response.ok) throw Error("تعذر البحث عن الصور");
+
+  const data = await response.json();
+  const pages = Object.values(data.query?.pages || {});
+
+  const image = pages.find(p => {
+    const info = p.imageinfo?.[0];
+    return info?.thumburl;
+  });
+
+  if (!image) throw Error("لم يتم العثور على صورة مناسبة");
+
+  const info = image.imageinfo[0];
+  const meta = info.extmetadata || {};
+
+  const clean = value =>
+    String(value || "").replace(/<[^>]*>/g, "").trim();
+
+  return {
+    url: info.thumburl,
+    page: info.descriptionurl,
+    author: clean(meta.Artist?.value),
+    license: clean(meta.LicenseShortName?.value)
+  };
+}
   if (!response.ok) throw Error("تعذر البحث عن الصور");
 
   const data = await response.json();
