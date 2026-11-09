@@ -1,6 +1,7 @@
 const PAGE_ID = "282216368809712";
 const GRAPH_VERSION = "v27.0";
-const GEMINI_MODEL = "gemini-3.5-flash-lite";
+const 
+GEMINI_MODEL = "gemini-3.5-flash-lite";
 
 const TOPICS = [
  ["تاريخ مصر","الحياة اليومية في مصر القديمة"],
@@ -23,7 +24,21 @@ const TOPICS = [
 function json(data, status = 200) {
  return Response.json(data, { status });
 }
+async function ensurePostImageColumns(DB) {
+ const result = await DB.prepare("PRAGMA table_info(posts)").all();
+ const existing = new Set((result.results || []).map(c => c.name));
 
+ for (const [name, type] of [
+  ["image_url", "TEXT"],
+  ["image_page", "TEXT"],
+  ["image_author", "TEXT"],
+  ["image_license", "TEXT"]
+ ]) {
+  if (!existing.has(name)) {
+   await DB.prepare(`ALTER TABLE posts ADD COLUMN ${name} ${type}`).run();
+  }
+ }
+}
 async function ensureAutoSchema(DB) {
  await DB.prepare(
   "CREATE TABLE IF NOT EXISTS auto_settings (key TEXT PRIMARY KEY,value TEXT NOT NULL)"
