@@ -347,9 +347,35 @@ async function runAutomaticPost(env, scheduledTime) {
   const image = await findTopicImage(topic);
 
   /* حفظ المسودة */
-  const saved = await env.DB.prepare(
-   "INSERT INTO posts (content,post_type,status) VALUES (?,?,'draft')"
-  ).bind(content, category).run();
+await ensurePostImageColumns(env.DB);
+
+let image = null;
+
+try {
+ image = await findTopicImage(topic);
+} catch (e) {
+ console.log("Image search:", e.message);
+}
+
+const saved = await env.DB.prepare(
+ `INSERT INTO posts
+ (content,post_type,status,image_url,image_page,image_author,image_license)
+ VALUES (?,?,'draft',?,?,?,?)`
+).bind(
+ content,
+ category,
+ image?.url || null,
+ image?.page || null,
+ image?.author || null,
+ image?.license || null
+).run();
+
+return json({
+ ok: true,
+ id: saved.meta.last_row_id,
+ content,
+ image
+});
 
   postId = saved.meta.last_row_id;
 
