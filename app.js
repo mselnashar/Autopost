@@ -111,8 +111,11 @@
 
       showStatus(
         "aiStatus",
-        "تم إنشاء المسودة رقم " + data.id,
-        "ok"
+        "تم إنشاء المسودة رقم " + data.id +
+          (data.imageError
+            ? " — بدون صورة: " + data.imageError
+            : " — مع صورة"),
+        data.imageError ? "err" : "ok"
       );
 
       await loadDrafts();
@@ -136,13 +139,15 @@
     try {
       const data = await api("/api/save-draft", "POST", {
         content,
-        category: $("category").value
+        category: $("category").value,
+        topic: $("topic").value.trim()
       });
 
       showStatus(
         "aiStatus",
-        "تم حفظ المسودة رقم " + data.id,
-        "ok"
+        "تم حفظ المسودة رقم " + data.id +
+          (data.imageError ? " — بدون صورة: " + data.imageError : ""),
+        data.imageError ? "err" : "ok"
       );
 
       await loadDrafts();
@@ -173,6 +178,19 @@
         const title = document.createElement("b");
         title.textContent = "مسودة #" + post.id;
 
+        const thumb = document.createElement(post.image_url ? "img" : "div");
+
+        if (post.image_url) {
+          thumb.src = post.image_url;
+          thumb.alt = "";
+          thumb.loading = "lazy";
+          thumb.style.cssText =
+            "width:100%;max-height:200px;object-fit:cover;border-radius:10px;margin:8px 0";
+        } else {
+          thumb.className = "muted";
+          thumb.textContent = "⚠️ لا توجد صورة لهذه المسودة";
+        }
+
         const content = document.createElement("p");
         content.textContent = post.content;
 
@@ -185,6 +203,10 @@
           $("message").scrollIntoView({ behavior: "smooth" });
         });
 
+        const regen = makeButton("تغيير الصورة", "secondary", () => {
+          regenerateImage(post.id);
+        });
+
         const publish = makeButton("نشر", "primary", () => {
           publishDraft(post.id);
         });
@@ -193,8 +215,8 @@
           deleteDraft(post.id);
         });
 
-        actions.append(edit, publish, remove);
-        card.append(title, content, actions);
+        actions.append(edit, regen, publish, remove);
+        card.append(title, thumb, content, actions);
         box.append(card);
       });
 
@@ -210,6 +232,15 @@
     button.textContent = label;
     button.addEventListener("click", action);
     return button;
+  }
+
+  async function regenerateImage(id) {
+    try {
+      await api("/api/regenerate-image", "POST", { id });
+      await loadDrafts();
+    } catch (error) {
+      alert(error.message);
+    }
   }
 
   async function deleteDraft(id) {
@@ -252,7 +283,10 @@
     showStatus("publishStatus", "جاري النشر...");
 
     try {
-      const data = await api("/api/publish", "POST", { message });
+      const data = await api("/api/publish", "POST", {
+        message,
+        topic: $("topic").value.trim()
+      });
 
       showStatus(
         "publishStatus",
@@ -364,6 +398,7 @@
   window.clearEditor = clearEditor;
   window.loadAuto = loadAuto;
   window.toggleAuto = toggleAuto;
+  window.regenerateImage = regenerateImage;
 
   // تشغيل المعاينة عند الكتابة
   document.addEventListener("DOMContentLoaded", () => {
@@ -780,7 +815,8 @@ draw(0);
       preview.style.display = "block";
 
       result.textContent =
-        "تم العثور على صورة\n" +
+        "تم العثور على صورة" +
+        (data.image.fallback ? " (صورة احتياطية)" : "") + "\n" +
         "المصدر: " + data.image.page + "\n" +
         "صاحب الصورة: " + (data.image.author || "غير محدد") + "\n" +
         "الترخيص: " + (data.image.license || "غير محدد");
