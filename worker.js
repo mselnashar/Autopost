@@ -8,6 +8,8 @@
  * المتغيرات الاختيارية:
  *   FB_PAGE_ID          رقم الصفحة (الافتراضي: القيمة القديمة أدناه)
  *   GEMINI_MODEL        نموذج Gemini (الافتراضي: gemini-3.5-flash-lite)
+ * إعدادات في جدول auto_settings:
+ *   require_image       (الافتراضي 1) لا يُنشر أي منشور بدون صورة
  */
 
 const DEFAULT_PAGE_ID = "282216368809712";
@@ -43,7 +45,25 @@ function pageId(env) {
 
 /* ---------- قاعدة البيانات ---------- */
 
+let postsReady = false;
+let logsReady = false;
+let autoReady = false;
+
+/* إضافة الأعمدة الناقصة للجداول القديمة (SQLite لا يدعم ADD COLUMN IF NOT EXISTS) */
+async function addMissingColumns(DB, table, cols) {
+ const info = await DB.prepare(`PRAGMA table_info(${table})`).all();
+ const have = new Set((info.results || []).map(r => r.name));
+
+ for (const [name, type] of cols) {
+  if (!have.has(name)) {
+   await DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`).run();
+  }
+ }
+}
+
 async function ensurePostsSchema(DB) {
+ if (postsReady) return;
+
  await DB.prepare(
   `CREATE TABLE IF NOT EXISTS posts (
    id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,9 +79,20 @@ async function ensurePostsSchema(DB) {
    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`
  ).run();
+
+ await addMissingColumns(DB, "posts", [
+  ["image_url", "TEXT"],
+  ["image_page", "TEXT"],
+  ["image_author", "TEXT"],
+  ["image_license", "TEXT"]
+ ]);
+
+ postsReady = true;
 }
 
 async function ensurePublishLogsSchema(DB) {
+ if (logsReady) return;
+
  await DB.prepare(
   `CREATE TABLE IF NOT EXISTS publish_logs (
    id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,9 +102,18 @@ async function ensurePublishLogsSchema(DB) {
    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`
  ).run();
+
+ await addMissingColumns(DB, "publish_logs", [
+  ["fb_post_id", "TEXT"],
+  ["image_url", "TEXT"]
+ ]);
+
+ logsReady = true;
 }
 
 async function ensureAutoSchema(DB) {
+ if (autoReady) return;
+
  await ensurePostsSchema(DB);
  await ensurePublishLogsSchema(DB);
 
@@ -86,13 +126,30 @@ async function ensureAutoSchema(DB) {
  ).run();
 
  await DB.prepare(
+  "INSERT OR IGNORE INTO auto_settings (key,value) VALUES ('require_image','1')"
+ ).run();
+
+ await DB.prepare(
   "CREATE TABLE IF NOT EXISTS auto_topics (id INTEGER PRIMARY KEY AUTOINCREMENT,topic TEXT NOT NULL UNIQUE,category TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
  ).run();
+
+ await addMissingColumns(DB, "auto_topics", [["topic_en", "TEXT"]]);
 
  await DB.prepare(
   "CREATE TABLE IF NOT EXISTS auto_runs (id INTEGER PRIMARY KEY AUTOINCREMENT,slot_key TEXT NOT NULL UNIQUE,status TEXT NOT NULL,post_id INTEGER,topic TEXT,message TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
  ).run();
+
+ await DB.prepare(
+  "CREATE TABLE IF NOT EXISTS fallback_images (id INTEGER PRIMARY KEY AUTOINCREMENT,url TEXT NOT NULL,author TEXT,license TEXT,source TEXT DEFAULT 'Wikimedia Commons',page_url TEXT,last_used_at TEXT)"
+ ).run();
+
+ await DB.prepare(
+  "CREATE TABLE IF NOT EXISTS image_logs (id INTEGER PRIMARY KEY AUTOINCREMENT,post_id INTEGER,topic TEXT,topic_en TEXT,candidates_found INTEGER,chosen_url TEXT,fallback_used INTEGER DEFAULT 0,duration_ms INTEGER,error TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+ ).run();
+
+ autoReady = true;
 }
+
 
 /* ---------- التوقيت (بتوقيت القاهرة) ---------- */
 
@@ -199,64 +256,228 @@ async function generateAutoContent(env, topic, category) {
 
 /* ---------- البحث عن صورة مرتبطة بالموضوع ---------- */
 
-async function findTopicImage(topic) {
+/* مهم: ويكيميديا تطلب User-Agent حقيقياً — ضع بريدك الفعلي هنا */
+const WIKI_UA = "AqwalBot/1.0 (https://github.com/mselnashar/Autopost; aqwal-bot@example.com)";
+const OK_LICENSES = [
+ "public domain", "cc0",
+ "cc by 2.0", "cc by 3.0", "cc by 4.0",
+ "cc by-sa 2.0", "cc by-sa 3.0", "cc by-sa 4.0"
+];
+const MIN_IMG_W = 800;
+const MIN_IMG_H = 450;
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const cleanHtml = v => String(v || "").replace(/<[^>]*>/g, "").trim();
+
+/* عنوان تقريبي للبحث من أول سطر في النص */
+function topicFromContent(content) {
+ const line = String(content || "")
+  .split("\n")
+  .map(x => x.replace(/[*#_>`]/g, "").trim())
+  .find(Boolean) || "";
+ return line.slice(0, 100);
+}
+
+async function requireImage(env) {
+ await ensureAutoSchema(env.DB);
+ const s = await env.DB.prepare(
+  "SELECT value FROM auto_settings WHERE key='require_image'"
+ ).first();
+ return s?.value !== "0";
+}
+
+/* ترجمة الموضوع لعبارة إنجليزية قصيرة (مع تخزين في auto_topics.topic_en) */
+async function topicToEnglish(env, topic) {
+ const cached = await env.DB.prepare(
+  "SELECT topic_en FROM auto_topics WHERE topic=?"
+ ).bind(topic).first();
+
+ if (cached?.topic_en) return cached.topic_en;
+ if (!env.GEMINI_API_KEY) return "";
+
+ try {
+  const r = await fetch(
+   "https://generativelanguage.googleapis.com/v1beta/models/" +
+   (env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL) + ":generateContent",
+   {
+    method: "POST",
+    headers: {
+     "Content-Type": "application/json",
+     "x-goog-api-key": env.GEMINI_API_KEY
+    },
+    body: JSON.stringify({
+     contents: [{
+      role: "user",
+      parts: [{
+       text: "Translate this Arabic topic to a short English search phrase (2-5 words), return only the phrase: " + topic
+      }]
+     }],
+     generationConfig: { temperature: 0, maxOutputTokens: 100 }
+    })
+   }
+  );
+
+  if (!r.ok) return "";
+
+  const d = await r.json();
+  const en = (d.candidates?.[0]?.content?.parts || [])
+   .map(x => x.text || "").join("")
+   .replace(/["'\n]/g, " ").trim().slice(0, 80);
+
+  if (en) {
+   await env.DB.prepare(
+    "UPDATE auto_topics SET topic_en=? WHERE topic=?"
+   ).bind(en, topic).run();
+  }
+
+  return en;
+ } catch (e) {
+  return "";
+ }
+}
+
+/* بحث ويكيميديا كومنز مع التصفية (نوع الملف، الأبعاد، الترخيص) */
+async function searchCommons(query) {
  const api = new URL("https://commons.wikimedia.org/w/api.php");
 
  api.searchParams.set("action", "query");
  api.searchParams.set("generator", "search");
- api.searchParams.set("gsrsearch", topic);
+ api.searchParams.set("gsrsearch", query);
  api.searchParams.set("gsrnamespace", "6");
  api.searchParams.set("gsrlimit", "10");
  api.searchParams.set("prop", "imageinfo");
- api.searchParams.set("iiprop", "url|extmetadata");
+ api.searchParams.set("iiprop", "url|extmetadata|size|mime");
  api.searchParams.set("iiurlwidth", "1200");
  api.searchParams.set("format", "json");
 
- const response = await fetch(api, {
-  headers: { "User-Agent": "AqwalBot/1.0" }
- });
+ const response = await fetch(api, { headers: { "User-Agent": WIKI_UA } });
 
- if (!response.ok) {
-  throw Error("تعذر البحث عن الصور");
- }
+ if (!response.ok) throw Error("تعذر البحث عن الصور");
 
  const data = await response.json();
- const pages = Object.values(data.query?.pages || {});
 
- const image = pages.find(p => {
-  const info = p.imageinfo?.[0];
-  return info?.thumburl && info?.descriptionurl;
- });
+ return Object.values(data.query?.pages || {})
+  .map(p => {
+   const i = p.imageinfo?.[0];
+   if (!i?.thumburl || !i.descriptionurl) return null;
+   if (!["image/jpeg", "image/png"].includes(i.mime)) return null;
+   if (i.width < MIN_IMG_W || i.height < MIN_IMG_H) return null;
 
- if (!image) {
-  throw Error("لم يتم العثور على صورة مناسبة للموضوع");
+   const meta = i.extmetadata || {};
+   const license = cleanHtml(meta.LicenseShortName?.value);
+
+   if (!OK_LICENSES.some(l => license.toLowerCase().includes(l))) return null;
+
+   return {
+    url: i.thumburl,
+    page: i.descriptionurl,
+    author: cleanHtml(meta.Artist?.value).slice(0, 120),
+    license,
+    landscape: i.width > i.height
+   };
+  })
+  .filter(Boolean)
+  .sort((a, b) => b.landscape - a.landscape);
+}
+
+/* يرجع صورة دائماً أو يرمي خطأ. حد أقصى بحثان، ثم الصور الاحتياطية */
+async function findTopicImage(env, topic, { postId = null, skip = [] } = {}) {
+ const t0 = Date.now();
+ await ensureAutoSchema(env.DB);
+
+ let topicEn = "";
+ let found = 0;
+ let image = null;
+ let usedFallback = 0;
+ let error = null;
+
+ try {
+  topicEn = await topicToEnglish(env, topic);
+  const queries = [...new Set([topicEn, topic].filter(Boolean))];
+
+  for (let i = 0; i < queries.length && !image; i++) {
+   if (i) await sleep(250);
+   const list = (await searchCommons(queries[i])).filter(x => !skip.includes(x.url));
+   found += list.length;
+   image = list[0] || null;
+  }
+ } catch (e) {
+  error = String(e.message || e);
  }
 
- const info = image.imageinfo[0];
- const meta = info.extmetadata || {};
+ if (!image) {
+  const rows = (await env.DB.prepare(
+   "SELECT * FROM fallback_images ORDER BY last_used_at IS NOT NULL,last_used_at,id LIMIT 10"
+  ).all()).results || [];
 
- const clean = value =>
-  String(value || "").replace(/<[^>]*>/g, "").trim();
+  const fb = rows.find(x => !skip.includes(x.url));
+
+  if (fb) {
+   await env.DB.prepare(
+    "UPDATE fallback_images SET last_used_at=CURRENT_TIMESTAMP WHERE id=?"
+   ).bind(fb.id).run();
+
+   image = {
+    url: fb.url,
+    page: fb.page_url || fb.url,
+    author: fb.author || "",
+    license: fb.license || ""
+   };
+   usedFallback = 1;
+  } else {
+   error = error || "لم يتم العثور على صورة مناسبة ولا توجد صور احتياطية";
+  }
+ }
+
+ let logId = null;
+
+ try {
+  const log = await env.DB.prepare(
+   "INSERT INTO image_logs (post_id,topic,topic_en,candidates_found,chosen_url,fallback_used,duration_ms,error) VALUES (?,?,?,?,?,?,?,?)"
+  ).bind(
+   postId, topic, topicEn, found, image?.url || null,
+   usedFallback, Date.now() - t0, error
+  ).run();
+  logId = log.meta.last_row_id;
+ } catch (e) {
+  console.log("image_logs:", e.message);
+ }
+
+ if (!image) throw Error(error);
 
  return {
-  url: info.thumburl,
-  page: info.descriptionurl,
-  author: clean(meta.Artist?.value),
-  license: clean(meta.LicenseShortName?.value)
+  url: image.url,
+  page: image.page,
+  author: image.author,
+  license: image.license,
+  fallback: usedFallback,
+  logId
  };
+}
+
+async function saveImageToPost(env, postId, image) {
+ await env.DB.prepare(
+  "UPDATE posts SET image_url=?,image_page=?,image_author=?,image_license=? WHERE id=?"
+ ).bind(
+  image.url, image.page, image.author || null, image.license || null, postId
+ ).run();
+
+ if (image.logId) {
+  await env.DB.prepare(
+   "UPDATE image_logs SET post_id=? WHERE id=?"
+  ).bind(postId, image.logId).run();
+ }
 }
 
 /* ---------- النشر على فيسبوك ---------- */
 
-async function publishPhotoToFacebook(env, message, image) {
- if (!env.PAGE_ACCESS_TOKEN) {
-  throw Error("PAGE_ACCESS_TOKEN غير مضبوط");
- }
-
- const response = await fetch(image.url);
+async function uploadPhoto(env, message, image) {
+ const response = await fetch(image.url, {
+  headers: { "User-Agent": WIKI_UA }
+ });
 
  if (!response.ok) {
-  throw Error("تعذر تحميل الصورة");
+  throw Error("تعذر تحميل الصورة (" + response.status + ")");
  }
 
  const blob = await response.blob();
@@ -276,16 +497,13 @@ async function publishPhotoToFacebook(env, message, image) {
 
  const form = new FormData();
 
- form.set("source", blob, "aqwal-image.jpg");
+ form.set("source", blob, "aqwal-image." + (blob.type === "image/png" ? "png" : "jpg"));
  form.set("caption", message + attribution);
  form.set("access_token", env.PAGE_ACCESS_TOKEN);
 
  const result = await fetch(
   `https://graph.facebook.com/${GRAPH_VERSION}/${pageId(env)}/photos`,
-  {
-   method: "POST",
-   body: form
-  }
+  { method: "POST", body: form }
  );
 
  const data = await result.json();
@@ -295,6 +513,21 @@ async function publishPhotoToFacebook(env, message, image) {
  }
 
  return data.post_id || data.id;
+}
+
+/* محاولتان: الثانية بعد 5 ثوانٍ */
+async function publishPhotoToFacebook(env, message, image) {
+ if (!env.PAGE_ACCESS_TOKEN) {
+  throw Error("PAGE_ACCESS_TOKEN غير مضبوط");
+ }
+
+ try {
+  return await uploadPhoto(env, message, image);
+ } catch (e) {
+  console.log("Photo attempt 1 failed:", e.message);
+  await sleep(5000);
+  return await uploadPhoto(env, message, image);
+ }
 }
 
 async function publishToFacebook(env, message) {
@@ -319,17 +552,24 @@ async function publishToFacebook(env, message) {
  return d.id;
 }
 
-/* نشر منشور مع صورة إن وُجدت، وإلا نصي */
+/* نشر بالصورة. إذا كان require_image مفعّلاً لا يُنشر نص بلا صورة أبداً */
 async function publishPost(env, content, image) {
- if (image?.url) {
-  try {
-   return await publishPhotoToFacebook(env, content, image);
-  } catch (e) {
-   console.log("Photo publish failed, fallback to text:", e.message);
-  }
+ const mustHaveImage = await requireImage(env);
+
+ if (!image?.url) {
+  if (mustHaveImage) throw Error("لا توجد صورة للمنشور — تم إلغاء النشر (require_image)");
+  return publishToFacebook(env, content);
  }
- return publishToFacebook(env, content);
+
+ try {
+  return await publishPhotoToFacebook(env, content, image);
+ } catch (e) {
+  if (mustHaveImage) throw e;
+  console.log("Photo publish failed, fallback to text:", e.message);
+  return publishToFacebook(env, content);
+ }
 }
+
 
 /* ---------- تشغيل النشر التلقائي ---------- */
 
@@ -374,16 +614,17 @@ async function runAutomaticPost(env, scheduledTime) {
 
   [category, topic] = choice;
 
-  /* إنشاء المحتوى */
-  const content = await generateAutoContent(env, topic, category);
-
-  /* البحث عن الصورة (اختياري — لا يوقف النشر إن غابت) */
+  /* الصورة أولاً: إن لم توجد وكان require_image مفعّلاً يتوقف التشغيل ويُسجَّل السبب */
   let image = null;
   try {
-   image = await findTopicImage(topic);
+   image = await findTopicImage(env, topic);
   } catch (e) {
+   if (await requireImage(env)) throw e;
    console.log("Image search:", e.message);
   }
+
+  /* إنشاء المحتوى */
+  const content = await generateAutoContent(env, topic, category);
 
   /* حفظ المسودة */
   const saved = await env.DB.prepare(
@@ -401,6 +642,12 @@ async function runAutomaticPost(env, scheduledTime) {
 
   postId = saved.meta.last_row_id;
 
+  if (image?.logId) {
+   await env.DB.prepare(
+    "UPDATE image_logs SET post_id=? WHERE id=?"
+   ).bind(postId, image.logId).run();
+  }
+
   /* النشر */
   const fbId = await publishPost(env, content, image);
 
@@ -414,8 +661,8 @@ async function runAutomaticPost(env, scheduledTime) {
   ).bind(topic, category).run();
 
   await env.DB.prepare(
-   "INSERT INTO publish_logs (post_id,result,message) VALUES (?,'success',?)"
-  ).bind(postId, fbId).run();
+   "INSERT INTO publish_logs (post_id,result,message,fb_post_id,image_url) VALUES (?,'success',?,?,?)"
+  ).bind(postId, fbId, fbId, image?.url || null).run();
 
   await env.DB.prepare(
    "UPDATE auto_runs SET status='success',post_id=?,topic=?,message=? WHERE slot_key=?"
@@ -434,6 +681,7 @@ async function runAutomaticPost(env, scheduledTime) {
   throw e;
  }
 }
+
 
 /* واجهة الموقع */
 
@@ -576,7 +824,7 @@ button.secondary{background:#f0ecf6;color:var(--d);padding:9px 13px;border-radiu
 
 <div class="footer">أقوال © مركز إدارة المحتوى</div>
 </main>
-<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js?v=20261109c" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js?v=20261110a" defer></script>
 </body>
 </html>`;
 
@@ -745,7 +993,18 @@ export default {
      "INSERT INTO posts (content,post_type,status) VALUES (?,?,'draft')"
     ).bind(content, category).run();
 
-    return json({ ok: true, id: saved.meta.last_row_id, content });
+    const id = saved.meta.last_row_id;
+    let image = null;
+    let imageError = null;
+
+    try {
+     image = await findTopicImage(env, topic, { postId: id });
+     await saveImageToPost(env, id, image);
+    } catch (e) {
+     imageError = e.message;
+    }
+
+    return json({ ok: true, id, content, image, imageError });
    } catch (e) {
     return json({ ok: false, error: e.message }, 500);
    }
@@ -756,6 +1015,7 @@ export default {
     const b = await request.json();
     const content = String(b.content || "").trim();
     const category = String(b.category || "محتوى");
+    const topic = String(b.topic || "").trim().slice(0, 300) || topicFromContent(content);
 
     if (!content) return json({ ok: false, error: "المحتوى فارغ" }, 400);
 
@@ -765,7 +1025,18 @@ export default {
      "INSERT INTO posts (content,post_type,status) VALUES (?,?,'draft')"
     ).bind(content, category).run();
 
-    return json({ ok: true, id: x.meta.last_row_id });
+    const id = x.meta.last_row_id;
+    let image = null;
+    let imageError = null;
+
+    try {
+     image = await findTopicImage(env, topic, { postId: id });
+     await saveImageToPost(env, id, image);
+    } catch (e) {
+     imageError = e.message;
+    }
+
+    return json({ ok: true, id, image, imageError });
    } catch (e) {
     return json({ ok: false, error: e.message }, 500);
    }
@@ -780,7 +1051,7 @@ export default {
      return json({ ok: false, error: "اكتب موضوع البحث" }, 400);
     }
 
-    const image = await findTopicImage(topic);
+    const image = await findTopicImage(env, topic);
 
     return json({ ok: true, topic, image });
    } catch (e) {
@@ -825,23 +1096,42 @@ export default {
   }
 
   if (url.pathname === "/api/publish-draft" && request.method === "POST") {
+   let id = 0;
+   let claimed = false;
+
    try {
-    const id = Number((await request.json()).id);
+    id = Number((await request.json()).id);
 
-    await ensurePostsSchema(env.DB);
+    await ensureAutoSchema(env.DB);
 
-    const p = await env.DB.prepare(
-     "SELECT id,content,status,image_url,image_page,image_author,image_license FROM posts WHERE id=?"
-    ).bind(id).first();
+    /* حجز المسودة ذرياً لمنع النشر المزدوج */
+    const claim = await env.DB.prepare(
+     "UPDATE posts SET status='publishing' WHERE id=? AND status='draft'"
+    ).bind(id).run();
 
-    if (!p || p.status !== "draft") {
+    if (!claim.meta.changes) {
      return json({ ok: false, error: "المسودة غير موجودة أو سبق نشرها" }, 404);
     }
 
-    /* نشر بالصورة إن وُجدت، وإلا نصي */
-    const image = p.image_url
+    claimed = true;
+
+    const p = await env.DB.prepare(
+     "SELECT id,content,image_url,image_page,image_author,image_license FROM posts WHERE id=?"
+    ).bind(id).first();
+
+    let image = p.image_url
      ? { url: p.image_url, page: p.image_page, author: p.image_author, license: p.image_license }
      : null;
+
+    /* لا بحث جديد إن كانت الصورة محفوظة */
+    if (!image) {
+     try {
+      image = await findTopicImage(env, topicFromContent(p.content), { postId: id });
+      await saveImageToPost(env, id, image);
+     } catch (e) {
+      if (await requireImage(env)) throw e;
+     }
+    }
 
     const fb = await publishPost(env, p.content, image);
 
@@ -850,8 +1140,55 @@ export default {
     ).bind(fb, id).run();
 
     await env.DB.prepare(
-     "INSERT INTO publish_logs (post_id,result,message) VALUES (?,'success',?)"
-    ).bind(id, fb).run();
+     "INSERT INTO publish_logs (post_id,result,message,fb_post_id,image_url) VALUES (?,'success',?,?,?)"
+    ).bind(id, fb, fb, image?.url || null).run();
+
+    return json({ ok: true, id: fb });
+   } catch (e) {
+    if (claimed) {
+     await env.DB.prepare(
+      "UPDATE posts SET status='draft' WHERE id=? AND status='publishing'"
+     ).bind(id).run();
+
+     await env.DB.prepare(
+      "INSERT INTO publish_logs (post_id,result,message) VALUES (?,'failed',?)"
+     ).bind(id, String(e.message || e).slice(0, 900)).run();
+    }
+
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/publish" && request.method === "POST") {
+   try {
+    const b = await request.json();
+    const message = String(b.message || "").trim();
+    const topic = String(b.topic || "").trim().slice(0, 300) || topicFromContent(message);
+
+    if (!message) return json({ ok: false, error: "نص المنشور فارغ" }, 400);
+
+    await ensureAutoSchema(env.DB);
+
+    let image = null;
+    try {
+     image = await findTopicImage(env, topic);
+    } catch (e) {
+     if (await requireImage(env)) throw e;
+    }
+
+    const fb = await publishPost(env, message, image);
+
+    await env.DB.prepare(
+     "INSERT INTO posts (content,status,facebook_post_id,published_at,image_url,image_page,image_author,image_license) VALUES (?,'published',?,CURRENT_TIMESTAMP,?,?,?,?)"
+    ).bind(
+     message, fb,
+     image?.url || null, image?.page || null,
+     image?.author || null, image?.license || null
+    ).run();
+
+    await env.DB.prepare(
+     "INSERT INTO publish_logs (result,message,fb_post_id,image_url) VALUES ('success',?,?,?)"
+    ).bind(fb, fb, image?.url || null).run();
 
     return json({ ok: true, id: fb });
    } catch (e) {
@@ -859,25 +1196,69 @@ export default {
    }
   }
 
-  if (url.pathname === "/api/publish" && request.method === "POST") {
+  const preview = url.pathname.match(/^\/api\/posts\/(\d+)\/image-preview$/);
+
+  if (preview && request.method === "GET") {
    try {
-    const message = String((await request.json()).message || "").trim();
+    await ensurePostsSchema(env.DB);
 
-    if (!message) return json({ ok: false, error: "نص المنشور فارغ" }, 400);
+    const p = await env.DB.prepare(
+     "SELECT id,image_url,image_page,image_author,image_license FROM posts WHERE id=?"
+    ).bind(Number(preview[1])).first();
 
-    const fb = await publishToFacebook(env, message);
+    if (!p) return json({ ok: false, error: "المنشور غير موجود" }, 404);
+
+    return json({
+     ok: true,
+     image: p.image_url
+      ? { url: p.image_url, page: p.image_page, author: p.image_author, license: p.image_license }
+      : null
+    });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/regenerate-image" && request.method === "POST") {
+   try {
+    const b = await request.json();
+    const id = Number(b.id);
 
     await ensurePostsSchema(env.DB);
 
-    await env.DB.prepare(
-     "INSERT INTO posts (content,status,facebook_post_id,published_at) VALUES (?,'published',?,CURRENT_TIMESTAMP)"
-    ).bind(message, fb).run();
+    const p = await env.DB.prepare(
+     "SELECT id,content,status,image_url FROM posts WHERE id=?"
+    ).bind(id).first();
+
+    if (!p || p.status !== "draft") {
+     return json({ ok: false, error: "المسودة غير موجودة أو سبق نشرها" }, 404);
+    }
+
+    const topic = String(b.topic || "").trim().slice(0, 300) || topicFromContent(p.content);
+
+    const image = await findTopicImage(env, topic, {
+     postId: id,
+     skip: p.image_url ? [p.image_url] : []
+    });
+
+    await saveImageToPost(env, id, image);
+
+    return json({ ok: true, image });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/settings/require-image" && request.method === "POST") {
+   try {
+    await ensureAutoSchema(env.DB);
+    const v = (await request.json()).enabled === false ? "0" : "1";
 
     await env.DB.prepare(
-     "INSERT INTO publish_logs (result,message) VALUES ('success',?)"
-    ).bind(fb).run();
+     "UPDATE auto_settings SET value=? WHERE key='require_image'"
+    ).bind(v).run();
 
-    return json({ ok: true, id: fb });
+    return json({ ok: true, require_image: v === "1" });
    } catch (e) {
     return json({ ok: false, error: e.message }, 500);
    }
