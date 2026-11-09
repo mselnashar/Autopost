@@ -725,3 +725,68 @@ $("reelExportBtn").onclick = () => {
 draw(0);
 
 })();
+/* اختبار الصور دون نشر */
+(() => {
+  const main = document.querySelector("main");
+  if (!main || document.getElementById("imageTestBox")) return;
+
+  const box = document.createElement("section");
+  box.id = "imageTestBox";
+  box.className = "card";
+
+  box.innerHTML = `
+    <h2>اختبار الصور التلقائية</h2>
+    <label>موضوع البحث</label>
+    <input id="imageTestTopic" value="ابن الهيثم وأثره في المنهج العلمي">
+    <button class="primary" id="imageTestButton" style="margin-top:12px">
+      ابحث عن صورة
+    </button>
+    <div id="imageTestResult" class="status">لم يبدأ البحث بعد.</div>
+    <img id="imageTestPreview" style="display:none;width:100%;border-radius:12px;margin-top:12px">
+  `;
+
+  const footer = main.querySelector(".footer");
+  main.insertBefore(box, footer || null);
+
+  document.getElementById("imageTestButton").onclick = async () => {
+    const topic = document.getElementById("imageTestTopic").value.trim();
+    const result = document.getElementById("imageTestResult");
+    const preview = document.getElementById("imageTestPreview");
+
+    if (!topic) {
+      result.textContent = "اكتب موضوع البحث";
+      return;
+    }
+
+    result.textContent = "جاري البحث عن صورة...";
+    preview.style.display = "none";
+
+    try {
+      const response = await fetch("/api/test-image", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + document.getElementById("admin").value.trim(),
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ topic })
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "فشل البحث");
+      }
+
+      preview.src = data.image.url;
+      preview.style.display = "block";
+
+      result.textContent =
+        "تم العثور على صورة\n" +
+        "المصدر: " + data.image.page + "\n" +
+        "صاحب الصورة: " + (data.image.author || "غير محدد") + "\n" +
+        "الترخيص: " + (data.image.license || "غير محدد");
+
+    } catch (error) {
+      result.textContent = "خطأ: " + error.message;
+    }
+  };
+})();
