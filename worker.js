@@ -701,7 +701,29 @@ export default {
     return json({ ok: false, error: e.message }, 500);
    }
   }
+if (url.pathname === "/api/test-image" && request.method === "POST") {
+ try {
+  const body = await request.json();
+  const topic = String(body.topic || "").trim();
 
+  if (!topic) {
+   return json({ ok: false, error: "اكتب موضوع البحث" }, 400);
+  }
+
+  const image = await findTopicImage(topic);
+
+  return json({
+   ok: true,
+   topic,
+   image
+  });
+ } catch (e) {
+  return json({
+   ok: false,
+   error: e.message
+  }, 500);
+ }
+ }
   if (url.pathname === "/api/drafts" && request.method === "GET") {
    try {
     const x = await env.DB.prepare(
