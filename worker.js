@@ -15,7 +15,7 @@
 const DEFAULT_PAGE_ID = "282216368809712";
 const GRAPH_VERSION = "v27.0";
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
-const CAIRO_HOURS = [2, 6, 10, 14, 18, 22];
+const DEFAULT_HOURS = [2, 6, 10, 14, 18, 22];
 
 const TOPICS = [
  ["تاريخ مصر","الحياة اليومية في مصر القديمة"],
@@ -130,6 +130,10 @@ async function ensureAutoSchema(DB) {
  ).run();
 
  await DB.prepare(
+  "INSERT OR IGNORE INTO auto_settings (key,value) VALUES ('hours','2,6,10,14,18,22')"
+ ).run();
+
+ await DB.prepare(
   "CREATE TABLE IF NOT EXISTS auto_topics (id INTEGER PRIMARY KEY AUTOINCREMENT,topic TEXT NOT NULL UNIQUE,category TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
  ).run();
 
@@ -176,22 +180,48 @@ function cairoSlot(date) {
  };
 }
 
-function nextCairoRun(now = new Date()) {
+function nextCairoRun(now = new Date(), hours = DEFAULT_HOURS) {
+ if (!hours.length) return null;
+
  const p = cairoParts(now);
  const h = +p.hour;
  const m = +p.minute;
 
- let next = CAIRO_HOURS.find(x => x > h || (x === h && m < 1));
+ /* فرق التوقيت الفعلي للقاهرة (يراعي التوقيت الصيفي) */
+ const wholeMinute = now.getTime() - (now.getTime() % 60000);
+ const offset = Math.round(
+  (Date.UTC(+p.year, +p.month - 1, +p.day, h, m) - wholeMinute) / 3600000
+ );
+
+ let next = hours.find(x => x > h || (x === h && m < 1));
  let day = 0;
 
  if (next === undefined) {
-  next = CAIRO_HOURS[0];
+  next = hours[0];
   day = 1;
  }
 
  return new Date(
-  Date.UTC(+p.year, +p.month - 1, +p.day + day, next - 2, 0)
+  Date.UTC(+p.year, +p.month - 1, +p.day + day, next - offset, 0)
  ).toISOString();
+}
+
+/* مواعيد النشر المحفوظة (ساعات بتوقيت القاهرة) */
+async function getHours(env) {
+ await ensureAutoSchema(env.DB);
+
+ const s = await env.DB.prepare(
+  "SELECT value FROM auto_settings WHERE key='hours'"
+ ).first();
+
+ const list = String(s?.value ?? "")
+  .split(",")
+  .map(x => x.trim())
+  .filter(x => x !== "")
+  .map(Number)
+  .filter(n => Number.isInteger(n) && n >= 0 && n <= 23);
+
+ return [...new Set(list)].sort((a, b) => a - b);
 }
 
 /* ---------- توليد المحتوى عبر Gemini ---------- */
@@ -589,7 +619,9 @@ async function runAutomaticPost(env, scheduledTime) {
 
  const slot = cairoSlot(new Date(scheduledTime));
 
- if (slot.minute !== 0 || !CAIRO_HOURS.includes(slot.hour)) return;
+ const hours = await getHours(env);
+
+ if (slot.minute !== 0 || !hours.includes(slot.hour)) return;
 
  try {
   await env.DB.prepare(
@@ -698,83 +730,102 @@ const html = `<!doctype html>
 <meta name="theme-color" content="#302052">
 <title>أقوال | إدارة المحتوى</title>
 <style>
-:root{--p:#6845a3;--d:#302052;--bg:#f6f3fb;--t:#29243b;--m:#89839a;--b:#ebe7f1}
+:root{--p:#6845a3;--d:#302052;--bg:#f6f3fb;--t:#29243b;--m:#7d7790;--b:#e8e3f0;--ok:#176c3d;--err:#a32d42}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--t);font:16px Arial,Tahoma;line-height:1.7}
+body{margin:0;background:var(--bg);color:var(--t);font:16px/1.7 Tahoma,Arial,sans-serif}
 button,input,textarea,select{font:inherit}
-button{cursor:pointer;border:0}
-.top{background:linear-gradient(135deg,#302052,#67439c);color:white;padding:22px}
-.wrap,main{max-width:950px;margin:auto}
-.brand{font-size:25px;font-weight:bold}
-.brand small{display:block;font-size:13px;font-weight:normal;color:#ddd1f1}
-.top p{color:#e7def3}
-main{padding:15px}
-.card{background:white;border:1px solid var(--b);border-radius:16px;padding:17px;margin-bottom:14px}
-.head{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.head h2{font-size:18px;margin:0 0 12px}
-.muted{font-size:13px;color:var(--m)}
+button{cursor:pointer;border:0;border-radius:10px;padding:10px 14px}
+button:disabled{opacity:.5;cursor:default}
+.wrap{max-width:760px;margin:auto;padding:0 12px}
+.top{background:linear-gradient(135deg,#302052,#67439c);color:#fff;padding:14px 0}
+.top .wrap{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.brand{font-size:22px;font-weight:bold}
+.conn{font-size:12px;background:rgba(255,255,255,.18);padding:4px 10px;border-radius:20px}
+.login{display:flex;gap:8px;padding:12px 0}
+.login input{flex:1}
+.tabs{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid var(--b)}
+.tabs .wrap{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px 8px}
+.tabs button{background:none;color:var(--m);padding:8px 4px;font-size:14px}
+.tabs button.active{background:#f0ecf6;color:var(--d);font-weight:bold}
+.tab{display:none;padding:14px 0 40px}
+.tab.active{display:block}
+.card{background:#fff;border:1px solid var(--b);border-radius:16px;padding:16px;margin-bottom:12px}
+.card h2{font-size:17px;margin:0 0 4px}
+.muted{font-size:13px;color:var(--m);margin:2px 0 10px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.stat{background:#f8f6fb;border:1px solid var(--b);border-radius:12px;padding:10px}
+.stat{background:#f8f6fb;border:1px solid var(--b);border-radius:12px;padding:10px;text-align:center;font-size:13px;color:var(--m)}
 .stat strong{display:block;font-size:24px;color:var(--d)}
-label{display:block;font-size:13px;font-weight:bold;margin:10px 0 5px}
-input,textarea,select{width:100%;padding:11px;border:1px solid #ded9e7;border-radius:10px;background:white;color:var(--t)}
-textarea{min-height:240px;line-height:1.9}
-.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px}
-button.primary{background:var(--p);color:white;padding:10px 15px;border-radius:10px}
-button.secondary{background:#f0ecf6;color:var(--d);padding:9px 13px;border-radius:10px}
-.status{padding:10px 12px;background:#f2edf9;border-radius:10px;margin:10px 0;font-size:14px}
-.ok{background:#eaf7ef;color:#176c3d}
-.err{background:#fff0f1;color:#a32d42}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.preview,.post{border:1px solid var(--b);border-radius:12px;padding:13px;white-space:pre-wrap;overflow-wrap:anywhere}
-.post{margin:10px 0}
-.tag{font-size:11px;background:#f0ecf8;color:#63428d;padding:4px 8px;border-radius:20px}
-.footer{text-align:center;color:var(--m);font-size:12px;padding:20px}
-@media(max-width:620px){.grid{grid-template-columns:1fr}main{padding:10px}.card{padding:14px}.stat strong{font-size:21px}}
+label{display:block;font-size:13px;font-weight:bold;margin:12px 0 4px}
+input,textarea,select{width:100%;padding:11px;border:1px solid #ddd7e8;border-radius:10px;background:#fff;color:var(--t)}
+textarea{min-height:260px;line-height:1.9}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.primary{background:var(--p);color:#fff}
+.secondary{background:#f0ecf6;color:var(--d)}
+.danger{background:#fdecee;color:var(--err)}
+.block{width:100%}
+.status{padding:9px 12px;background:#f2edf9;border-radius:10px;margin:10px 0 0;font-size:14px;white-space:pre-wrap}
+.status.ok{background:#eaf7ef;color:var(--ok)}
+.status.err{background:#fff0f1;color:var(--err)}
+.status:empty{display:none}
+.hours{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}
+.hours button{background:#f4f1f8;color:var(--m);padding:9px 2px;font-size:14px}
+.hours button.on{background:var(--p);color:#fff}
+.post{border:1px solid var(--b);border-radius:12px;padding:12px;margin-top:10px}
+.post img{width:100%;max-height:190px;object-fit:cover;border-radius:10px;margin:8px 0}
+.post p{margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+.switch{display:flex;align-items:center;gap:10px;margin-top:12px}
+.switch input{width:auto}
+details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
+.log{font-size:13px;border-bottom:1px solid var(--b);padding:8px 0;white-space:pre-wrap}
+#imageTestPreview{display:none;width:100%;border-radius:12px;margin-top:10px}
 </style>
 </head>
 <body>
-<header class="top">
+
+<header class="top"><div class="wrap">
+<div class="brand">أقوال</div>
+<div id="connection" class="conn">غير متصل</div>
+</div></header>
+
 <div class="wrap">
-<div class="brand">أقوال<small>مركز إدارة المحتوى والنشر الذكي</small></div>
-<p>إدارة المحتوى والنشر على صفحة Facebook</p>
+<div class="login">
+<input id="admin" type="password" placeholder="مفتاح الإدارة" autocomplete="current-password">
+<button class="primary" onclick="refreshAll()">دخول</button>
 </div>
-</header>
-<main>
+</div>
 
-<section class="card">
-<div class="head"><h2>لوحة التحكم</h2><span class="tag">الرئيسية</span></div>
+<nav class="tabs"><div class="wrap">
+<button data-tab="home" class="active" onclick="showTab('home')">الرئيسية</button>
+<button data-tab="create" onclick="showTab('create')">إنشاء</button>
+<button data-tab="drafts" onclick="showTab('drafts')">المسودات</button>
+<button data-tab="settings" onclick="showTab('settings')">الإعدادات</button>
+</div></nav>
+
+<main class="wrap">
+
+<section id="tab-home" class="tab active">
+<div class="card">
 <div class="stats">
-<div class="stat">إجمالي المنشورات<strong id="total">—</strong></div>
-<div class="stat">المسودات<strong id="draftCount">—</strong></div>
-<div class="stat">المنشورة<strong id="publishedCount">—</strong></div>
+<div class="stat"><strong id="total">—</strong>المنشورات</div>
+<div class="stat"><strong id="draftCount">—</strong>المسودات</div>
+<div class="stat"><strong id="publishedCount">—</strong>المنشورة</div>
 </div>
-<div id="connection" class="status">أدخل مفتاح الإدارة لفحص الاتصال</div>
-<label>مفتاح الإدارة</label>
-<input id="admin" type="password" placeholder="ADMIN_KEY">
-<div class="actions">
-<button class="primary" onclick="checkConnection()">فحص الاتصال</button>
-<button class="secondary" onclick="refreshAll()">تحديث البيانات</button>
 </div>
-</section>
 
-<section class="card">
-<div class="head"><h2>النشر التلقائي</h2><span class="tag">كل 4 ساعات</span></div>
-<div id="autoStatus" class="status">متوقف افتراضياً — لن ينشر قبل تفعيله</div>
-<p class="muted">مواعيد القاهرة: 10:00، 14:00، 18:00، 22:00، 02:00، 06:00.</p>
-<div class="actions">
-<button id="autoToggle" class="primary" onclick="toggleAuto()">تفعيل النشر التلقائي</button>
-<button class="secondary" onclick="loadAuto()">تحديث السجل</button>
-</div>
+<div class="card">
+<h2>النشر التلقائي</h2>
+<div id="autoStatus" class="status">أدخل مفتاح الإدارة للبدء</div>
 <p id="nextRun" class="muted"></p>
-<hr><b>آخر المحاولات</b>
-<div id="autoLogs">لا توجد محاولات بعد.</div>
+<button id="autoToggle" class="primary block" onclick="toggleAuto()">تفعيل النشر التلقائي</button>
+<details><summary>آخر المحاولات</summary><div id="autoLogs">—</div></details>
+</div>
 </section>
 
-<section class="card">
-<div class="head"><h2>إنشاء محتوى جديد</h2><span class="tag">Gemini AI</span></div>
-<label>موضوع المنشور</label>
-<input id="topic" placeholder="اكتب موضوع المنشور">
+<section id="tab-create" class="tab">
+<div class="card">
+<h2>إنشاء بالذكاء الاصطناعي</h2>
+<label>الموضوع</label>
+<input id="topic" placeholder="مثال: ابن الهيثم">
 <label>التصنيف</label>
 <select id="category">
 <option>تاريخ مصر</option><option>التاريخ العربي</option>
@@ -782,54 +833,75 @@ button.secondary{background:#f0ecf6;color:var(--d);padding:9px 13px;border-radiu
 <option>ثقافة وعلوم</option><option>قصص إنسانية</option>
 <option>ألغاز تاريخية</option><option>أقوال وحكم</option>
 </select>
-<label>حجم المحتوى</label>
+<details><summary>خيارات إضافية</summary>
+<label>الحجم</label>
 <select id="length">
+<option>100 إلى 150 كلمة</option>
 <option>200 إلى 300 كلمة</option>
 <option selected>400 إلى 600 كلمة</option>
 <option>600 إلى 800 كلمة</option>
-<option>100 إلى 150 كلمة</option>
 </select>
 <label>تعليمات إضافية</label>
 <input id="extra" placeholder="اختياري">
-<button id="generateBtn" class="primary" style="width:100%;margin-top:12px" onclick="generate()">إنشاء المحتوى</button>
-<div id="aiStatus" class="status">اكتب الموضوع ثم ابدأ.</div>
-</section>
+</details>
+<button id="generateBtn" class="primary block" style="margin-top:14px" onclick="generate()">إنشاء المحتوى</button>
+<div id="aiStatus" class="status"></div>
+</div>
 
-<section class="card">
-<h2>محرر المنشورات</h2>
-<div class="grid">
-<div>
-<label>نص المنشور</label>
+<div class="card">
+<h2>المنشور</h2>
 <textarea id="message" placeholder="اكتب أو أنشئ منشوراً..."></textarea>
-<div class="actions">
-<button class="primary" onclick="saveDraft()">حفظ كمسودة</button>
-<button class="secondary" onclick="copyText()">نسخ النص</button>
-<button class="secondary" onclick="clearEditor()">مسح</button>
-</div>
-</div>
-<div>
-<label>المعاينة</label>
-<div id="preview" class="preview">ستظهر المعاينة هنا.</div>
 <p id="wordCount" class="muted">0 كلمة</p>
+<div class="row">
+<button class="secondary" onclick="saveDraft()">حفظ مسودة</button>
+<button class="primary" onclick="publishText()">نشر الآن</button>
+<button class="secondary" onclick="copyText()">نسخ</button>
+<button class="danger" onclick="clearEditor()">مسح</button>
 </div>
+<div id="publishStatus" class="status"></div>
 </div>
 </section>
 
-<section class="card">
-<div class="head"><h2>المسودات المحفوظة</h2><button class="secondary" onclick="loadDrafts()">تحديث</button></div>
-<div id="drafts">اضغط تحديث لعرض المسودات.</div>
+<section id="tab-drafts" class="tab">
+<div class="card">
+<div style="display:flex;justify-content:space-between;align-items:center">
+<h2>المسودات</h2>
+<button class="secondary" onclick="loadDrafts()">تحديث</button>
+</div>
+<div id="drafts">أدخل مفتاح الإدارة ثم اضغط تحديث.</div>
+</div>
 </section>
 
-<section class="card">
-<h2>النشر المباشر</h2>
-<p class="muted">النشر هنا يتم فوراً على صفحة Facebook.</p>
-<button class="primary" onclick="publishText()">نشر المنشور الحالي</button>
-<div id="publishStatus" class="status">لم يتم النشر بعد.</div>
+<section id="tab-settings" class="tab">
+<div class="card">
+<h2>مواعيد النشر التلقائي</h2>
+<p class="muted">اختر الساعات (بتوقيت القاهرة). ينشر الموقع منشوراً واحداً عند بداية كل ساعة مختارة.</p>
+<div class="row" style="margin-top:0">
+<button class="secondary" onclick="setPreset([2,6,10,14,18,22])">6 يومياً</button>
+<button class="secondary" onclick="setPreset([8,14,20])">3 يومياً</button>
+<button class="secondary" onclick="setPreset([12])">1 يومياً</button>
+</div>
+<div id="hoursGrid" class="hours"></div>
+<p id="hoursSummary" class="muted"></p>
+<button class="primary block" onclick="saveHours()">حفظ المواعيد</button>
+<div id="hoursStatus" class="status"></div>
+</div>
+
+<div class="card">
+<h2>الصور</h2>
+<label class="switch"><input type="checkbox" id="requireImage" onchange="saveRequireImage()"> عدم النشر بدون صورة</label>
+<details><summary>اختبار البحث عن صورة</summary>
+<label>الموضوع</label>
+<input id="imageTestTopic" value="ابن الهيثم وأثره في المنهج العلمي">
+<button class="secondary block" style="margin-top:10px" onclick="testImage()">ابحث</button>
+<div id="imageTestResult" class="status"></div>
+<img id="imageTestPreview" alt="">
+</details>
+</div>
 </section>
 
-<div class="footer">أقوال © مركز إدارة المحتوى</div>
 </main>
-<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js?v=20261110a" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js?v=20261110b" defer></script>
 </body>
 </html>`;
 
@@ -920,11 +992,15 @@ export default {
      "SELECT status,topic,message,created_at FROM auto_runs ORDER BY id DESC LIMIT 10"
     ).all();
 
+    const hours = await getHours(env);
+
     return json({
      ok: true,
      enabled: s?.value === "1",
      logs: logs.results || [],
-     nextRun: nextCairoRun()
+     hours,
+     requireImage: await requireImage(env),
+     nextRun: nextCairoRun(new Date(), hours)
     });
    } catch (e) {
     return json({ ok: false, error: e.message }, 500);
@@ -1200,6 +1276,30 @@ export default {
     ).bind(fb, fb, image?.url || null).run();
 
     return json({ ok: true, id: fb });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/auto/hours" && request.method === "POST") {
+   try {
+    await ensureAutoSchema(env.DB);
+
+    const b = await request.json();
+    const list = [...new Set(
+     (Array.isArray(b.hours) ? b.hours : []).map(Number)
+      .filter(n => Number.isInteger(n) && n >= 0 && n <= 23)
+    )].sort((a, c) => a - c);
+
+    if (!list.length) {
+     return json({ ok: false, error: "اختر ساعة واحدة على الأقل" }, 400);
+    }
+
+    await env.DB.prepare(
+     "UPDATE auto_settings SET value=? WHERE key='hours'"
+    ).bind(list.join(",")).run();
+
+    return json({ ok: true, hours: list, nextRun: nextCairoRun(new Date(), list) });
    } catch (e) {
     return json({ ok: false, error: e.message }, 500);
    }
