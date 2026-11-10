@@ -134,6 +134,10 @@ async function ensureAutoSchema(DB) {
  ).run();
 
  await DB.prepare(
+  "INSERT OR IGNORE INTO auto_settings (key,value) VALUES ('auto_story','0')"
+ ).run();
+
+ await DB.prepare(
   "CREATE TABLE IF NOT EXISTS auto_topics (id INTEGER PRIMARY KEY AUTOINCREMENT,topic TEXT NOT NULL UNIQUE,category TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
  ).run();
 
@@ -293,8 +297,11 @@ const OK_LICENSES = [
  "cc by 2.0", "cc by 3.0", "cc by 4.0",
  "cc by-sa 2.0", "cc by-sa 3.0", "cc by-sa 4.0"
 ];
-const MIN_IMG_W = 800;
-const MIN_IMG_H = 450;
+const MIN_IMG_W = 500;
+const MIN_IMG_H = 400;
+
+/* تراخيص ويكيميديا الحرة: المجال العام (PD-...)، CC0، CC BY، CC BY-SA */
+const licenseOk = l => /^pd([\s-]|$)|public domain|^cc0|^cc[ -]by(-sa)?[ -][2-4]\.0/i.test(String(l || "").trim());
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const cleanHtml = v => String(v || "").replace(/<[^>]*>/g, "").trim();
@@ -377,9 +384,9 @@ async function searchCommons(query) {
 
  api.searchParams.set("action", "query");
  api.searchParams.set("generator", "search");
- api.searchParams.set("gsrsearch", query);
+ api.searchParams.set("gsrsearch", query + " filetype:bitmap");
  api.searchParams.set("gsrnamespace", "6");
- api.searchParams.set("gsrlimit", "10");
+ api.searchParams.set("gsrlimit", "20");
  api.searchParams.set("prop", "imageinfo");
  api.searchParams.set("iiprop", "url|extmetadata|size|mime");
  api.searchParams.set("iiurlwidth", "1200");
@@ -401,7 +408,7 @@ async function searchCommons(query) {
    const meta = i.extmetadata || {};
    const license = cleanHtml(meta.LicenseShortName?.value);
 
-   if (!OK_LICENSES.some(l => license.toLowerCase().includes(l))) return null;
+   if (!licenseOk(license)) return null;
 
    return {
     url: i.thumburl,
@@ -428,7 +435,11 @@ async function findTopicImage(env, topic, { postId = null, skip = [], context = 
 
  try {
   topicEn = await topicToEnglish(env, topic, context);
-  const queries = [...new Set([topicEn, topic].filter(Boolean))];
+  const queries = [...new Set([
+   topicEn,
+   topicEn.split(/\s+/).slice(0, 2).join(" "),
+   topic
+  ].filter(Boolean))].slice(0, 3);
 
   for (let i = 0; i < queries.length && !image; i++) {
    if (i) await sleep(250);
@@ -606,6 +617,129 @@ async function publishPost(env, content, image) {
 }
 
 
+/* ---------- القصص والريلز ---------- */
+
+const MAX_REEL_BYTES = 60 * 1024 * 1024;
+
+/* القصص لا تدعم نصاً مرافقاً، فلا نستخدم تلقائياً إلا صوراً لا تشترط ذكر المصدر */
+const isCreditFree = license => /public domain|cc0|^pd([\s-]|$)/i.test(license || "");
+
+async function autoStoryEnabled(env) {
+ await ensureAutoSchema(env.DB);
+ const s = await env.DB.prepare(
+  "SELECT value FROM auto_settings WHERE key='auto_story'"
+ ).first();
+ return s?.value === "1";
+}
+
+async function publishStoryBlob(env, blob) {
+ if (!env.PAGE_ACCESS_TOKEN) throw Error("PAGE_ACCESS_TOKEN غير مضبوط");
+
+ /* الصورة تُرفع غير منشورة ثم تُنشر كقصة (يجب ألا تكون مستخدمة في منشور) */
+ const form = new FormData();
+ form.set("source", blob, "story.jpg");
+ form.set("published", "false");
+ form.set("access_token", env.PAGE_ACCESS_TOKEN);
+
+ const up = await fetch(
+  `https://graph.facebook.com/${GRAPH_VERSION}/${pageId(env)}/photos`,
+  { method: "POST", body: form }
+ );
+ const ud = await up.json();
+
+ if (!up.ok || !ud.id) {
+  throw Error(ud.error?.message || "فشل رفع صورة القصة");
+ }
+
+ const st = await fetch(
+  `https://graph.facebook.com/${GRAPH_VERSION}/${pageId(env)}/photo_stories`,
+  {
+   method: "POST",
+   body: new URLSearchParams({
+    photo_id: ud.id,
+    access_token: env.PAGE_ACCESS_TOKEN
+   })
+  }
+ );
+ const sd = await st.json();
+
+ if (!st.ok || !sd.success) {
+  throw Error(sd.error?.message || "فشل نشر القصة");
+ }
+
+ return String(sd.post_id || ud.id);
+}
+
+async function publishStoryFromUrl(env, imageUrl) {
+ const r = await fetch(imageUrl, { headers: { "User-Agent": WIKI_UA } });
+
+ if (!r.ok) throw Error("تعذر تحميل صورة القصة");
+
+ const blob = await r.blob();
+
+ if (!blob.type.startsWith("image/") || blob.size > 8 * 1024 * 1024) {
+  throw Error("صورة القصة غير صالحة");
+ }
+
+ return publishStoryBlob(env, blob);
+}
+
+async function publishReel(env, bytes, description) {
+ if (!env.PAGE_ACCESS_TOKEN) throw Error("PAGE_ACCESS_TOKEN غير مضبوط");
+
+ const token = env.PAGE_ACCESS_TOKEN;
+ const base = `https://graph.facebook.com/${GRAPH_VERSION}/${pageId(env)}/video_reels`;
+
+ /* 1) بدء جلسة الرفع */
+ const start = await fetch(base, {
+  method: "POST",
+  body: new URLSearchParams({ upload_phase: "start", access_token: token })
+ });
+ const sd = await start.json();
+
+ if (!start.ok || !sd.video_id) {
+  throw Error(sd.error?.message || "تعذر بدء رفع الريلز");
+ }
+
+ /* 2) رفع الفيديو (الخادم هنا rupload وليس graph) */
+ const up = await fetch(
+  sd.upload_url || `https://rupload.facebook.com/video-upload/${sd.video_id}`,
+  {
+   method: "POST",
+   headers: {
+    Authorization: "OAuth " + token,
+    offset: "0",
+    file_size: String(bytes.byteLength)
+   },
+   body: bytes
+  }
+ );
+ const ud = await up.json().catch(() => ({}));
+
+ if (!up.ok || ud.success === false) {
+  throw Error(ud.debug_info?.message || ud.error?.message || "فشل رفع الفيديو");
+ }
+
+ /* 3) النشر */
+ const fin = await fetch(base, {
+  method: "POST",
+  body: new URLSearchParams({
+   upload_phase: "finish",
+   video_id: sd.video_id,
+   video_state: "PUBLISHED",
+   description,
+   access_token: token
+  })
+ });
+ const fd = await fin.json();
+
+ if (!fin.ok || fd.success === false) {
+  throw Error(fd.error?.message || "فشل نشر الريلز");
+ }
+
+ return sd.video_id;
+}
+
 /* ---------- تشغيل النشر التلقائي ---------- */
 
 async function runAutomaticPost(env, scheduledTime) {
@@ -701,9 +835,24 @@ async function runAutomaticPost(env, scheduledTime) {
    "INSERT INTO publish_logs (post_id,result,message,fb_post_id,image_url) VALUES (?,'success',?,?,?)"
   ).bind(postId, fbId, fbId, image?.url || null).run();
 
+  /* قصة تلقائية (اختيارية) — فشلها لا يؤثر على المنشور */
+  let storyNote = "";
+
+  try {
+   if (image?.url && await autoStoryEnabled(env)) {
+    if (isCreditFree(image.license)) {
+     storyNote = " + قصة: " + await publishStoryFromUrl(env, image.url);
+    } else {
+     storyNote = " (لم تُنشر قصة: الصورة تشترط ذكر المصدر)";
+    }
+   }
+  } catch (e) {
+   storyNote = " (تعذر نشر القصة: " + String(e.message || e).slice(0, 150) + ")";
+  }
+
   await env.DB.prepare(
    "UPDATE auto_runs SET status='success',post_id=?,topic=?,message=? WHERE slot_key=?"
-  ).bind(postId, topic, "تم النشر: " + fbId, slot.key).run();
+  ).bind(postId, topic, "تم النشر: " + fbId + storyNote, slot.key).run();
  } catch (e) {
   const msg = String(e.message || e).slice(0, 900);
 
@@ -744,8 +893,8 @@ button:disabled{opacity:.5;cursor:default}
 .login{display:flex;gap:8px;padding:12px 0}
 .login input{flex:1}
 .tabs{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid var(--b)}
-.tabs .wrap{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px 8px}
-.tabs button{background:none;color:var(--m);padding:8px 4px;font-size:14px}
+.tabs .wrap{display:flex;gap:4px;padding:6px 8px;overflow-x:auto;scrollbar-width:none}
+.tabs button{flex:1 0 auto;background:none;color:var(--m);padding:8px 14px;font-size:14px;white-space:nowrap}
 .tabs button.active{background:#f0ecf6;color:var(--d);font-weight:bold}
 .tab{display:none;padding:14px 0 40px}
 .tab.active{display:block}
@@ -777,6 +926,7 @@ textarea{min-height:260px;line-height:1.9}
 .switch input{width:auto}
 details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 .log{font-size:13px;border-bottom:1px solid var(--b);padding:8px 0;white-space:pre-wrap}
+#storyCanvas{display:block;width:100%;max-width:280px;margin:12px auto;border-radius:12px;background:#302052}
 #imageTestPreview{display:none;width:100%;border-radius:12px;margin-top:10px}
 </style>
 </head>
@@ -798,6 +948,8 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 <button data-tab="home" class="active" onclick="showTab('home')">الرئيسية</button>
 <button data-tab="create" onclick="showTab('create')">إنشاء</button>
 <button data-tab="drafts" onclick="showTab('drafts')">المسودات</button>
+<button data-tab="stories" onclick="showTab('stories')">القصص</button>
+<button data-tab="reels" onclick="showTab('reels')">الريلز</button>
 <button data-tab="settings" onclick="showTab('settings')">الإعدادات</button>
 </div></nav>
 
@@ -872,6 +1024,42 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 </div>
 </section>
 
+<section id="tab-stories" class="tab">
+<div class="card">
+<h2>قصة بصورة</h2>
+<p class="muted">تبقى القصة 24 ساعة. تُرسم الصورة هنا ثم تُرفع كما تراها.</p>
+<label>الموضوع</label>
+<input id="storyTopic" placeholder="مثال: ابن الهيثم">
+<button class="secondary block" style="margin-top:10px" onclick="storyFindImage()">ابحث عن صورة</button>
+<label class="switch"><input type="checkbox" id="storyUseText" checked onchange="storyDraw()"> كتابة عنوان على الصورة</label>
+<input id="storyTitle" placeholder="العنوان (اختياري)" oninput="storyDraw()">
+<canvas id="storyCanvas" width="1080" height="1920"></canvas>
+<button id="storyPublishBtn" class="primary block" onclick="storyPublish()" disabled>نشر القصة</button>
+<div id="storyStatus" class="status"></div>
+</div>
+
+<div class="card">
+<h2>قصص تلقائية</h2>
+<label class="switch"><input type="checkbox" id="autoStory" onchange="saveAutoStory()"> نشر قصة مع كل منشور تلقائي</label>
+<p class="muted">القصص لا تدعم نصاً مرافقاً، لذلك تُنشر تلقائياً فقط الصور التي لا تشترط ذكر المصدر (المجال العام). غير ذلك يُتخطى، ويظهر السبب في آخر المحاولات.</p>
+</div>
+</section>
+
+<section id="tab-reels" class="tab">
+<div class="card">
+<h2>نشر ريلز</h2>
+<p class="muted">فيديو رأسي 9:16، يفضّل mp4، بدقة 540p فأعلى. الحد الأقصى 60 ميغابايت.</p>
+<label>ملف الفيديو</label>
+<input id="reelFile" type="file" accept="video/*" onchange="reelPick()">
+<div id="reelInfo" class="muted"></div>
+<label>الوصف (حتى 800 حرف)</label>
+<textarea id="reelCaption" maxlength="800" style="min-height:110px" placeholder="وصف الريلز مع الوسوم"></textarea>
+<button id="reelPublishBtn" class="primary block" style="margin-top:12px" onclick="reelPublish()" disabled>نشر الريلز</button>
+<div id="reelStatus" class="status"></div>
+<button id="reelCheckBtn" class="secondary block" style="display:none;margin-top:8px" onclick="reelCheck()">فحص حالة المعالجة</button>
+</div>
+</section>
+
 <section id="tab-settings" class="tab">
 <div class="card">
 <h2>مواعيد النشر التلقائي</h2>
@@ -890,6 +1078,10 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 <div class="card">
 <h2>الصور</h2>
 <label class="switch"><input type="checkbox" id="requireImage" onchange="saveRequireImage()"> عدم النشر بدون صورة</label>
+<p class="muted" style="margin-top:14px">الصور الاحتياطية: <b id="fallbackCount">0</b> — تُستخدم عندما لا يجد البحث صورة مناسبة.</p>
+<input id="fallbackUrl" placeholder="رابط صفحة ملف من commons.wikimedia.org">
+<button class="secondary block" style="margin-top:8px" onclick="addFallback()">إضافة صورة احتياطية</button>
+<div id="fallbackStatus" class="status"></div>
 <details><summary>اختبار البحث عن صورة</summary>
 <label>الموضوع</label>
 <input id="imageTestTopic" value="ابن الهيثم وأثره في المنهج العلمي">
@@ -901,7 +1093,7 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 </section>
 
 </main>
-<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js?v=20261110b" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js?v=20261110d" defer></script>
 </body>
 </html>`;
 
@@ -1000,6 +1192,8 @@ export default {
      logs: logs.results || [],
      hours,
      requireImage: await requireImage(env),
+     autoStory: await autoStoryEnabled(env),
+     fallbackCount: (await env.DB.prepare("SELECT COUNT(*) c FROM fallback_images").first()).c,
      nextRun: nextCairoRun(new Date(), hours)
     });
    } catch (e) {
@@ -1276,6 +1470,178 @@ export default {
     ).bind(fb, fb, image?.url || null).run();
 
     return json({ ok: true, id: fb });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/fallback/add" && request.method === "POST") {
+   try {
+    await ensureAutoSchema(env.DB);
+
+    const b = await request.json();
+    const m = String(b.page || "").match(/commons\.wikimedia\.org\/wiki\/(File:[^?#\s]+)/i);
+
+    if (!m) {
+     return json({ ok: false, error: "الصق رابط صفحة الملف من ويكيميديا كومنز (يحتوي File:)" }, 400);
+    }
+
+    const api = new URL("https://commons.wikimedia.org/w/api.php");
+    api.searchParams.set("action", "query");
+    api.searchParams.set("titles", decodeURIComponent(m[1]).replace(/_/g, " "));
+    api.searchParams.set("prop", "imageinfo");
+    api.searchParams.set("iiprop", "url|extmetadata|size|mime");
+    api.searchParams.set("iiurlwidth", "1200");
+    api.searchParams.set("format", "json");
+
+    const r = await fetch(api, { headers: { "User-Agent": WIKI_UA } });
+    const i = Object.values((await r.json()).query?.pages || {})[0]?.imageinfo?.[0];
+
+    if (!i) return json({ ok: false, error: "لم أجد هذا الملف" }, 404);
+
+    if (!["image/jpeg", "image/png"].includes(i.mime)) {
+     return json({ ok: false, error: "الصيغة غير مدعومة (المطلوب JPEG أو PNG)" }, 400);
+    }
+
+    const license = cleanHtml(i.extmetadata?.LicenseShortName?.value);
+
+    if (!licenseOk(license)) {
+     return json({ ok: false, error: "الترخيص غير مناسب: " + (license || "غير معروف") }, 400);
+    }
+
+    const imgUrl = i.thumburl || i.url;
+
+    const exists = await env.DB.prepare(
+     "SELECT id FROM fallback_images WHERE url=?"
+    ).bind(imgUrl).first();
+
+    if (!exists) {
+     await env.DB.prepare(
+      "INSERT INTO fallback_images (url,author,license,page_url) VALUES (?,?,?,?)"
+     ).bind(
+      imgUrl,
+      cleanHtml(i.extmetadata?.Artist?.value).slice(0, 120),
+      license,
+      i.descriptionurl
+     ).run();
+    }
+
+    const count = (await env.DB.prepare("SELECT COUNT(*) c FROM fallback_images").first()).c;
+
+    return json({ ok: true, count, license, title: m[1].replace(/_/g, " ") });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/image-proxy" && request.method === "GET") {
+   try {
+    const u = new URL(url.searchParams.get("url") || "");
+
+    if (u.protocol !== "https:" || u.hostname !== "upload.wikimedia.org") {
+     return json({ ok: false, error: "مصدر الصورة غير مسموح" }, 400);
+    }
+
+    const r = await fetch(u, { headers: { "User-Agent": WIKI_UA } });
+
+    if (!r.ok) return json({ ok: false, error: "تعذر تحميل الصورة" }, 502);
+
+    return new Response(r.body, {
+     headers: { "Content-Type": r.headers.get("Content-Type") || "image/jpeg" }
+    });
+   } catch (e) {
+    return json({ ok: false, error: "رابط غير صالح" }, 400);
+   }
+  }
+
+  if (url.pathname === "/api/story/publish" && request.method === "POST") {
+   try {
+    const bytes = await request.arrayBuffer();
+
+    if (!bytes.byteLength || bytes.byteLength > 8 * 1024 * 1024) {
+     return json({ ok: false, error: "حجم الصورة غير صالح" }, 400);
+    }
+
+    const id = await publishStoryBlob(
+     env, new Blob([bytes], { type: "image/jpeg" })
+    );
+
+    await ensurePublishLogsSchema(env.DB);
+    await env.DB.prepare(
+     "INSERT INTO publish_logs (result,message,fb_post_id) VALUES ('story',?,?)"
+    ).bind(id, id).run();
+
+    return json({ ok: true, id });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/reel/publish" && request.method === "POST") {
+   try {
+    const declared = Number(request.headers.get("content-length") || 0);
+
+    if (declared > MAX_REEL_BYTES) {
+     return json({ ok: false, error: "حجم الفيديو أكبر من 60 ميغابايت" }, 413);
+    }
+
+    const bytes = await request.arrayBuffer();
+
+    if (!bytes.byteLength || bytes.byteLength > MAX_REEL_BYTES) {
+     return json({ ok: false, error: "حجم الفيديو غير صالح" }, 400);
+    }
+
+    let description = "";
+    try {
+     description = decodeURIComponent(request.headers.get("x-description") || "");
+    } catch (e) {}
+
+    const videoId = await publishReel(env, bytes, description.slice(0, 800));
+
+    await ensurePublishLogsSchema(env.DB);
+    await env.DB.prepare(
+     "INSERT INTO publish_logs (result,message,fb_post_id) VALUES ('reel',?,?)"
+    ).bind(videoId, videoId).run();
+
+    return json({ ok: true, video_id: videoId });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/reel/status" && request.method === "GET") {
+   try {
+    const id = (url.searchParams.get("id") || "").replace(/\D/g, "");
+
+    if (!id) return json({ ok: false, error: "رقم الفيديو مطلوب" }, 400);
+
+    const u = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${id}`);
+    u.searchParams.set("fields", "status");
+    u.searchParams.set("access_token", env.PAGE_ACCESS_TOKEN);
+
+    const r = await fetch(u);
+    const d = await r.json();
+
+    if (!r.ok) {
+     return json({ ok: false, error: d.error?.message || "تعذر فحص الحالة" }, 400);
+    }
+
+    return json({ ok: true, status: d.status || null });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/settings/auto-story" && request.method === "POST") {
+   try {
+    await ensureAutoSchema(env.DB);
+    const v = (await request.json()).enabled === true ? "1" : "0";
+
+    await env.DB.prepare(
+     "UPDATE auto_settings SET value=? WHERE key='auto_story'"
+    ).bind(v).run();
+
+    return json({ ok: true, auto_story: v === "1" });
    } catch (e) {
     return json({ ok: false, error: e.message }, 500);
    }
