@@ -287,12 +287,15 @@ async function requireImage(env) {
 }
 
 /* ترجمة الموضوع لعبارة إنجليزية قصيرة (مع تخزين في auto_topics.topic_en) */
-async function topicToEnglish(env, topic) {
- const cached = await env.DB.prepare(
-  "SELECT topic_en FROM auto_topics WHERE topic=?"
- ).bind(topic).first();
+async function topicToEnglish(env, topic, context = "") {
+ if (!context) {
+  const cached = await env.DB.prepare(
+   "SELECT topic_en FROM auto_topics WHERE topic=?"
+  ).bind(topic).first();
 
- if (cached?.topic_en) return cached.topic_en;
+  if (cached?.topic_en) return cached.topic_en;
+ }
+
  if (!env.GEMINI_API_KEY) return "";
 
  try {
@@ -309,7 +312,9 @@ async function topicToEnglish(env, topic) {
      contents: [{
       role: "user",
       parts: [{
-       text: "Translate this Arabic topic to a short English search phrase (2-5 words), return only the phrase: " + topic
+       text: context
+        ? "Read this Arabic text and return only a short English Wikimedia Commons image search phrase (2-5 words) for its main subject (a person, place, or object):\n\n" + context.slice(0, 600)
+        : "Translate this Arabic topic to a short English search phrase (2-5 words), return only the phrase: " + topic
       }]
      }],
      generationConfig: { temperature: 0, maxOutputTokens: 100 }
@@ -324,7 +329,7 @@ async function topicToEnglish(env, topic) {
    .map(x => x.text || "").join("")
    .replace(/["'\n]/g, " ").trim().slice(0, 80);
 
-  if (en) {
+  if (en && !context) {
    await env.DB.prepare(
     "UPDATE auto_topics SET topic_en=? WHERE topic=?"
    ).bind(en, topic).run();
@@ -381,7 +386,7 @@ async function searchCommons(query) {
 }
 
 /* يرجع صورة دائماً أو يرمي خطأ. حد أقصى بحثان، ثم الصور الاحتياطية */
-async function findTopicImage(env, topic, { postId = null, skip = [] } = {}) {
+async function findTopicImage(env, topic, { postId = null, skip = [], context = "" } = {}) {
  const t0 = Date.now();
  await ensureAutoSchema(env.DB);
 
@@ -392,7 +397,7 @@ async function findTopicImage(env, topic, { postId = null, skip = [] } = {}) {
  let error = null;
 
  try {
-  topicEn = await topicToEnglish(env, topic);
+  topicEn = await topicToEnglish(env, topic, context);
   const queries = [...new Set([topicEn, topic].filter(Boolean))];
 
   for (let i = 0; i < queries.length && !image; i++) {
@@ -1015,7 +1020,9 @@ export default {
     const b = await request.json();
     const content = String(b.content || "").trim();
     const category = String(b.category || "محتوى");
-    const topic = String(b.topic || "").trim().slice(0, 300) || topicFromContent(content);
+    const explicit = String(b.topic || "").trim().slice(0, 300);
+    const topic = explicit || topicFromContent(content);
+    const context = explicit ? "" : content;
 
     if (!content) return json({ ok: false, error: "المحتوى فارغ" }, 400);
 
@@ -1030,7 +1037,7 @@ export default {
     let imageError = null;
 
     try {
-     image = await findTopicImage(env, topic, { postId: id });
+     image = await findTopicImage(env, topic, { postId: id, context });
      await saveImageToPost(env, id, image);
     } catch (e) {
      imageError = e.message;
@@ -1126,7 +1133,7 @@ export default {
     /* لا بحث جديد إن كانت الصورة محفوظة */
     if (!image) {
      try {
-      image = await findTopicImage(env, topicFromContent(p.content), { postId: id });
+      image = await findTopicImage(env, topicFromContent(p.content), { postId: id, context: p.content });
       await saveImageToPost(env, id, image);
      } catch (e) {
       if (await requireImage(env)) throw e;
@@ -1163,7 +1170,9 @@ export default {
    try {
     const b = await request.json();
     const message = String(b.message || "").trim();
-    const topic = String(b.topic || "").trim().slice(0, 300) || topicFromContent(message);
+    const explicit = String(b.topic || "").trim().slice(0, 300);
+    const topic = explicit || topicFromContent(message);
+    const context = explicit ? "" : message;
 
     if (!message) return json({ ok: false, error: "نص المنشور فارغ" }, 400);
 
@@ -1171,7 +1180,7 @@ export default {
 
     let image = null;
     try {
-     image = await findTopicImage(env, topic);
+     image = await findTopicImage(env, topic, { context });
     } catch (e) {
      if (await requireImage(env)) throw e;
     }
@@ -1234,10 +1243,12 @@ export default {
      return json({ ok: false, error: "المسودة غير موجودة أو سبق نشرها" }, 404);
     }
 
-    const topic = String(b.topic || "").trim().slice(0, 300) || topicFromContent(p.content);
+    const explicit = String(b.topic || "").trim().slice(0, 300);
+    const topic = explicit || topicFromContent(p.content);
 
     const image = await findTopicImage(env, topic, {
      postId: id,
+     context: explicit ? "" : p.content,
      skip: p.image_url ? [p.image_url] : []
     });
 
