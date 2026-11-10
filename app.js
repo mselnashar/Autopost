@@ -380,6 +380,7 @@
       renderHours();
 
       $("requireImage").checked = data.requireImage !== false;
+      $("autoStory").checked = data.autoStory === true;
 
       const box = $("autoLogs");
       box.replaceChildren();
@@ -467,17 +468,295 @@
     }
   }
 
+  /* ---------- القصص ---------- */
+
+  let storyImg = null;
+  let storyMeta = null;
+
+  function wrapLines(ctx, text, width) {
+    const lines = [];
+    let line = "";
+
+    for (const word of text.split(/\s+/)) {
+      const test = line ? line + " " + word : word;
+
+      if (ctx.measureText(test).width > width && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = test;
+      }
+    }
+
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  function storyDraw() {
+    const canvas = $("storyCanvas");
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#302052";
+    ctx.fillRect(0, 0, 1080, 1920);
+
+    if (!storyImg) return;
+
+    const scale = Math.max(1080 / storyImg.width, 1920 / storyImg.height);
+    const w = storyImg.width * scale;
+    const h = storyImg.height * scale;
+    ctx.drawImage(storyImg, (1080 - w) / 2, (1920 - h) / 2, w, h);
+
+    const g = ctx.createLinearGradient(0, 1100, 0, 1920);
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(1, "rgba(0,0,0,.8)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 1100, 1080, 820);
+
+    ctx.direction = "rtl";
+    ctx.textAlign = "center";
+
+    const title = $("storyUseText").checked ? $("storyTitle").value.trim() : "";
+
+    if (title) {
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 70px Tahoma, Arial";
+      wrapLines(ctx, title, 900).slice(0, 4).forEach((line, i) => {
+        ctx.fillText(line, 540, 1450 + i * 92);
+      });
+    }
+
+    /* سطر المصدر على الصورة نفسها (القصص بلا نص مرافق) */
+    if (storyMeta) {
+      const credit = "📷 " + (storyMeta.author || "").slice(0, 50) +
+        " — " + (storyMeta.license || "") + " — Wikimedia Commons";
+      ctx.fillStyle = "rgba(255,255,255,.88)";
+      ctx.font = "30px Tahoma, Arial";
+      ctx.fillText(credit, 540, 1870);
+    }
+  }
+
+  async function storyFindImage() {
+    const topic = $("storyTopic").value.trim();
+
+    if (!topic) {
+      showStatus("storyStatus", "اكتب الموضوع أولاً", "err");
+      return;
+    }
+
+    $("storyPublishBtn").disabled = true;
+    showStatus("storyStatus", "جاري البحث عن صورة...");
+
+    try {
+      const data = await api("/api/test-image", "POST", { topic });
+      storyMeta = data.image;
+
+      const r = await fetch(
+        "/api/image-proxy?url=" + encodeURIComponent(data.image.url),
+        { headers: { Authorization: "Bearer " + $("admin").value.trim() } }
+      );
+
+      if (!r.ok) throw new Error("تعذر تحميل الصورة");
+
+      storyImg = await createImageBitmap(await r.blob());
+
+      if (!$("storyTitle").value) $("storyTitle").value = topic;
+
+      storyDraw();
+      $("storyPublishBtn").disabled = false;
+      showStatus("storyStatus", "الصورة جاهزة للنشر", "ok");
+
+    } catch (error) {
+      showStatus("storyStatus", error.message, "err");
+    }
+  }
+
+  async function storyPublish() {
+    if (!storyImg) return;
+    if (!confirm("نشر هذه القصة على صفحة Facebook؟")) return;
+
+    const button = $("storyPublishBtn");
+    button.disabled = true;
+    showStatus("storyStatus", "جاري نشر القصة...");
+
+    try {
+      const blob = await new Promise((resolve, reject) => {
+        $("storyCanvas").toBlob(
+          b => (b ? resolve(b) : reject(new Error("تعذر تجهيز الصورة"))),
+          "image/jpeg",
+          0.9
+        );
+      });
+
+      const response = await fetch("/api/story/publish", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + $("admin").value.trim(),
+          "Content-Type": "image/jpeg"
+        },
+        body: blob
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "فشل نشر القصة");
+
+      showStatus("storyStatus", "تم نشر القصة: " + data.id, "ok");
+
+    } catch (error) {
+      showStatus("storyStatus", error.message, "err");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function saveAutoStory() {
+    try {
+      await api("/api/settings/auto-story", "POST", {
+        enabled: $("autoStory").checked
+      });
+    } catch (error) {
+      alert(error.message);
+      $("autoStory").checked = !$("autoStory").checked;
+    }
+  }
+
+  /* ---------- الريلز ---------- */
+
+  let reelFileObj = null;
+  let reelVideoId = null;
+
+  function reelPick() {
+    const file = $("reelFile").files[0];
+
+    reelFileObj = null;
+    $("reelPublishBtn").disabled = true;
+    $("reelInfo").textContent = "";
+
+    if (!file) return;
+
+    const mb = (file.size / 1048576).toFixed(1);
+
+    if (file.size > 60 * 1048576) {
+      $("reelInfo").textContent = "حجم الملف " + mb + " ميغابايت — أكبر من الحد (60).";
+      return;
+    }
+
+    const video = document.createElement("video");
+    video.preload = "metadata";
+
+    video.onloadedmetadata = () => {
+      const warnings = [];
+
+      if (video.videoHeight <= video.videoWidth) warnings.push("الفيديو ليس رأسياً 9:16");
+      if (Math.min(video.videoWidth, video.videoHeight) < 540) warnings.push("الدقة أقل من 540p");
+      if (!/mp4/i.test(file.type)) warnings.push("الصيغة ليست mp4");
+
+      $("reelInfo").textContent =
+        Math.round(video.duration) + " ثانية — " +
+        video.videoWidth + "×" + video.videoHeight + " — " + mb + " ميغابايت" +
+        (warnings.length ? "\n⚠️ " + warnings.join("، ") : "");
+
+      URL.revokeObjectURL(video.src);
+      reelFileObj = file;
+      $("reelPublishBtn").disabled = false;
+    };
+
+    video.onerror = () => {
+      $("reelInfo").textContent = "تعذر قراءة الفيديو، جرّب ملف mp4.";
+      URL.revokeObjectURL(video.src);
+    };
+
+    video.src = URL.createObjectURL(file);
+  }
+
+  function reelPublish() {
+    if (!reelFileObj) return;
+    if (!confirm("نشر هذا الريلز على صفحة Facebook؟")) return;
+
+    const button = $("reelPublishBtn");
+    button.disabled = true;
+    $("reelCheckBtn").style.display = "none";
+    showStatus("reelStatus", "جاري الرفع... 0%");
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/reel/publish");
+    xhr.setRequestHeader("Authorization", "Bearer " + $("admin").value.trim());
+    xhr.setRequestHeader("Content-Type", reelFileObj.type || "video/mp4");
+    xhr.setRequestHeader(
+      "X-Description",
+      encodeURIComponent($("reelCaption").value.trim().slice(0, 800))
+    );
+
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable) {
+        const pct = Math.round(e.loaded / e.total * 100);
+        showStatus(
+          "reelStatus",
+          pct < 100 ? "جاري الرفع... " + pct + "%" : "اكتمل الرفع، جاري النشر على Facebook..."
+        );
+      }
+    };
+
+    xhr.onload = () => {
+      button.disabled = false;
+
+      try {
+        const data = JSON.parse(xhr.responseText);
+
+        if (xhr.status >= 400 || !data.ok) {
+          throw new Error(data.error || "فشل نشر الريلز");
+        }
+
+        reelVideoId = data.video_id;
+        showStatus("reelStatus", "تم إرسال الريلز (" + data.video_id + "). قد تستغرق المعالجة دقائق.", "ok");
+        $("reelCheckBtn").style.display = "block";
+
+      } catch (error) {
+        showStatus("reelStatus", error.message, "err");
+      }
+    };
+
+    xhr.onerror = () => {
+      button.disabled = false;
+      showStatus("reelStatus", "انقطع الاتصال أثناء الرفع", "err");
+    };
+
+    xhr.send(reelFileObj);
+  }
+
+  async function reelCheck() {
+    if (!reelVideoId) return;
+
+    try {
+      const data = await api("/api/reel/status?id=" + reelVideoId);
+      const st = data.status || {};
+      const err = st.processing_phase?.error?.message;
+
+      showStatus(
+        "reelStatus",
+        "الحالة: " + (st.video_status || "غير معروفة") +
+          (err ? "\nخطأ: " + err : ""),
+        err ? "err" : ""
+      );
+    } catch (error) {
+      showStatus("reelStatus", error.message, "err");
+    }
+  }
+
   /* ---------- إتاحة الدوال لأزرار الصفحة ---------- */
 
   Object.assign(window, {
     showTab, refreshAll, generate, saveDraft, publishText, copyText,
     clearEditor, loadDrafts, regenerateImage, deleteDraft, publishDraft,
-    loadAuto, toggleAuto, setPreset, saveHours, saveRequireImage, testImage
+    loadAuto, toggleAuto, setPreset, saveHours, saveRequireImage, testImage,
+    storyFindImage, storyDraw, storyPublish, saveAutoStory,
+    reelPick, reelPublish, reelCheck
   });
 
   document.addEventListener("DOMContentLoaded", () => {
     $("message")?.addEventListener("input", preview);
     preview();
     renderHours();
+    storyDraw();
   });
 })();
