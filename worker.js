@@ -18,21 +18,75 @@ const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const DEFAULT_HOURS = [2, 6, 10, 14, 18, 22];
 
 const TOPICS = [
- ["تاريخ مصر","الحياة اليومية في مصر القديمة"],
- ["التاريخ العربي","بيت الحكمة وحركة الترجمة في بغداد"],
- ["التاريخ العالمي","مدينة بومبي قبل ثوران البركان"],
- ["شخصيات مؤثرة","ابن الهيثم وأثره في المنهج العلمي"],
- ["ألغاز تاريخية","لغز مستعمرة رونوك"],
- ["الثقافة والعلوم","كيف غيّر اختراع الورق مسار المعرفة؟"],
- ["قصص إنسانية","قصة تضامن إنساني غيّرت حياة أشخاص"],
- ["تاريخ مصر","قصة إنشاء مكتبة الإسكندرية القديمة"],
- ["التاريخ العربي","رحلات ابن بطوطة"],
- ["التاريخ العالمي","اكتشاف حجر رشيد وفك رموزه"],
- ["شخصيات مؤثرة","ماري كوري ورحلتها العلمية"],
- ["الثقافة والعلوم","كيف تعمل الذاكرة البشرية؟"],
- ["تاريخ مصر","قصة قناة السويس"],
- ["التاريخ العربي","الخوارزمي وتطور علم الجبر"],
- ["الثقافة والعلوم","لماذا نرى البرق قبل سماع الرعد؟"]
+ // تاريخ مصر
+ ["تاريخ مصر", "كيف كانت الحياة في مدينة الفسطاط؟"],
+ ["تاريخ مصر", "أسرار بناء معابد أبو سمبل"],
+ ["تاريخ مصر", "كيف كان المصريون القدماء يعالجون الأمراض؟"],
+ ["تاريخ مصر", "قصة مقياس النيل وأهميته"],
+ ["تاريخ مصر", "رحلة نقل معابد النوبة لإنقاذها"],
+
+ // التاريخ العربي والإسلامي
+ ["التاريخ العربي", "كيف نشأت مدينة بغداد المدورة؟"],
+ ["التاريخ العربي", "قصة تأسيس جامعة القرويين"],
+ ["التاريخ العربي", "الزراعة والري في الحضارة الإسلامية"],
+ ["التاريخ العربي", "البريد والاتصالات في العصر العباسي"],
+ ["التاريخ العربي", "كيف ازدهرت التجارة على طريق الحرير؟"],
+
+ // التاريخ العالمي
+ ["التاريخ العالمي", "كيف كانت الحياة في روما القديمة؟"],
+ ["التاريخ العالمي", "قصة سقوط جدار برلين"],
+ ["التاريخ العالمي", "كيف غيّر الطاعون الأسود أوروبا؟"],
+ ["التاريخ العالمي", "قصة أول رحلة ناجحة حول العالم"],
+ ["التاريخ العالمي", "كيف نشأت الألعاب الأولمبية القديمة؟"],
+
+ // شخصيات مؤثرة
+ ["شخصيات مؤثرة", "عباس بن فرناس ومحاولات الطيران"],
+ ["شخصيات مؤثرة", "الخنساء ومكانتها في الشعر العربي"],
+ ["شخصيات مؤثرة", "ابن النفيس واكتشاف الدورة الدموية الصغرى"],
+ ["شخصيات مؤثرة", "نيكولا تسلا وأفكاره التي سبقت عصره"],
+ ["شخصيات مؤثرة", "أحمد زويل ورحلة اكتشاف الفيمتو ثانية"],
+
+ // ألغاز واكتشافات
+ ["ألغاز واكتشافات", "لماذا اختفى شعب المايا من مدنه الكبرى؟"],
+ ["ألغاز واكتشافات", "سر آلية أنتيكيثيرا القديمة"],
+ ["ألغاز واكتشافات", "كيف اكتُشفت مدينة ماتشو بيتشو؟"],
+ ["ألغاز واكتشافات", "الرسائل الغامضة في مخطوطة فوينيتش"],
+ ["ألغاز واكتشافات", "أسرار خطوط نازكا في صحراء بيرو"],
+
+ // العلوم والتكنولوجيا
+ ["الثقافة والعلوم", "كيف اخترع الإنسان الساعة الميكانيكية؟"],
+ ["الثقافة والعلوم", "لماذا يطفو الجليد فوق الماء؟"],
+ ["الثقافة والعلوم", "كيف تنتقل المعلومات عبر الإنترنت؟"],
+ ["الثقافة والعلوم", "كيف تعمل البوصلة المغناطيسية؟"],
+ ["الثقافة والعلوم", "لماذا تختلف بصمات الأصابع بين البشر؟"],
+
+ // الطبيعة والكون
+ ["الطبيعة والكون", "كيف تتكون الشهب والنيازك؟"],
+ ["الطبيعة والكون", "لماذا لا تسقط الأقمار الصناعية من السماء؟"],
+ ["الطبيعة والكون", "كيف تتواصل الأشجار داخل الغابات؟"],
+ ["الطبيعة والكون", "ما سر هجرة الطيور لمسافات طويلة؟"],
+ ["الطبيعة والكون", "كيف تتشكل الشعاب المرجانية؟"],
+
+ // الحضارات والعادات
+ ["الحضارات والعادات", "من أين جاءت عادة الاحتفال بعيد الميلاد؟"],
+ ["الحضارات والعادات", "كيف كان الناس يقيسون الوقت قبل الساعات؟"],
+ ["الحضارات والعادات", "قصة نشأة الأرقام العربية وانتشارها"],
+ ["الحضارات والعادات", "كيف تطورت صناعة العملات المعدنية؟"],
+ ["الحضارات والعادات", "لماذا تختلف طرق التحية بين الشعوب؟"],
+
+ // قصص وأحداث
+ ["قصص إنسانية", "قصة الرجل الذي أنقذ آلاف الأطفال خلال الحرب"],
+ ["قصص إنسانية", "كيف ساهمت حملة تطوعية في إنقاذ قرية؟"],
+ ["أحداث غيرت العالم", "كيف غيّر اختراع الطباعة انتشار المعرفة؟"],
+ ["أحداث غيرت العالم", "قصة أول اتصال هاتفي في التاريخ"],
+ ["أحداث غيرت العالم", "كيف غيّر اكتشاف البنسلين الطب؟"],
+
+ // الاقتصاد والحياة
+ ["الاقتصاد والحياة", "كيف ظهرت البنوك في العالم؟"],
+ ["الاقتصاد والحياة", "لماذا ظهرت النقود الورقية؟"],
+ ["الاقتصاد والحياة", "كيف يعمل مبدأ العرض والطلب؟"],
+ ["الاقتصاد والحياة", "قصة نشأة التأمين وأهميته"],
+ ["الاقتصاد والحياة", "كيف تطورت وسائل النقل من العربات إلى القطارات؟"]
 ];
 
 function json(data, status = 200) {
@@ -139,6 +193,14 @@ async function ensureAutoSchema(DB) {
 
  await DB.prepare(
   "INSERT OR IGNORE INTO auto_settings (key,value) VALUES ('blog_hours','')"
+ ).run();
+
+ await DB.prepare(
+  "INSERT OR IGNORE INTO auto_settings (key,value) VALUES ('use_builtin','1')"
+ ).run();
+
+ await DB.prepare(
+  "CREATE TABLE IF NOT EXISTS custom_topics (id INTEGER PRIMARY KEY AUTOINCREMENT,category TEXT NOT NULL,topic TEXT NOT NULL UNIQUE,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
  ).run();
 
  await DB.prepare(
@@ -1047,6 +1109,63 @@ async function publishReel(env, bytes, description) {
  return sd.video_id;
 }
 
+/* ---------- التنبيهات (تيليجرام) ---------- */
+
+const notifyReady = env => !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID);
+
+async function notify(env, text) {
+ if (!notifyReady(env)) return false;
+
+ try {
+  const r = await fetch(
+   `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+   {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+     chat_id: env.TELEGRAM_CHAT_ID,
+     text: String(text).slice(0, 3500),
+     disable_web_page_preview: true
+    })
+   }
+  );
+
+  return r.ok;
+ } catch (e) {
+  console.log("notify:", e.message);
+  return false;
+ }
+}
+
+/* ---------- اختيار موضوع النشر التلقائي ---------- */
+
+/* مواضيعك أولاً، ثم القائمة المدمجة (إن كانت مفعّلة) */
+async function pickTopic(env, used) {
+ await ensureAutoSchema(env.DB);
+
+ const custom = ((await env.DB.prepare(
+  "SELECT category,topic FROM custom_topics ORDER BY id"
+ ).all()).results || []).map(r => [r.category, r.topic]);
+
+ const setting = await env.DB.prepare(
+  "SELECT value FROM auto_settings WHERE key='use_builtin'"
+ ).first();
+
+ const all = [...custom, ...(setting?.value === "0" ? [] : TOPICS)];
+
+ if (!all.length) {
+  throw Error("لا توجد مواضيع: أضف مواضيع من الإعدادات أو فعّل القائمة المدمجة");
+ }
+
+ const fresh = x => !used.has(x[1]);
+ const freshCustom = custom.filter(fresh);
+ const freshAll = all.filter(fresh);
+
+ const pool = freshCustom.length ? freshCustom : (freshAll.length ? freshAll : all);
+
+ return pool[Math.floor(Math.random() * pool.length)];
+}
+
 /* ---------- تشغيل النشر التلقائي ---------- */
 
 async function runAutomaticPost(env, scheduledTime) {
@@ -1084,13 +1203,7 @@ async function runAutomaticPost(env, scheduledTime) {
 
   const used = new Set((old.results || []).map(x => x.topic));
 
-  const pool = TOPICS.filter(x => !used.has(x[1]));
-
-  const choice = (pool.length ? pool : TOPICS)[
-   Math.floor(Math.random() * (pool.length || TOPICS.length))
-  ];
-
-  [category, topic] = choice;
+  [category, topic] = await pickTopic(env, used);
 
   /* الصورة أولاً: إن لم توجد وكان require_image مفعّلاً يتوقف التشغيل ويُسجَّل السبب */
   let image = null;
@@ -1192,6 +1305,17 @@ async function runAutomaticPost(env, scheduledTime) {
   await env.DB.prepare(
    "UPDATE auto_runs SET status='failed',post_id=?,topic=?,message=? WHERE slot_key=?"
   ).bind(postId, topic, msg, slot.key).run();
+
+  await notify(
+   env,
+   "❌ فشل النشر التلقائي\n" +
+   "الموعد: " + slot.hour + ":00 (القاهرة)\n" +
+   "الموضوع: " + (topic || "—") + "\n" +
+   "السبب: " + msg.slice(0, 600) +
+   (/token|oauth|session|permission/i.test(msg)
+    ? "\n🔑 غالباً توكن فيسبوك انتهى أو ينقصه صلاحية."
+    : "")
+  );
 
   throw e;
  }
@@ -1444,6 +1568,33 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 </div>
 
 <div class="card">
+<h2>المواضيع التلقائية</h2>
+<p class="muted">مواضيعك تُستخدم أولاً، ثم القائمة المدمجة (<b id="builtinCount">0</b> موضوعاً).</p>
+<label class="switch"><input type="checkbox" id="useBuiltin" onchange="saveBuiltin()"> استخدام القائمة المدمجة</label>
+<label>التصنيف</label>
+<select id="topicCategory">
+<option>شخصيات مؤثرة</option><option>تاريخ مصر</option>
+<option>التاريخ العربي</option><option>التاريخ العالمي</option>
+<option>ألغاز واكتشافات</option><option>الثقافة والعلوم</option>
+<option>الطبيعة والكون</option><option>الحضارات والعادات</option>
+<option>قصص إنسانية</option><option>أحداث غيرت العالم</option>
+<option>الاقتصاد والحياة</option>
+</select>
+<label>المواضيع (موضوع في كل سطر)</label>
+<textarea id="topicsText" style="min-height:110px" placeholder="نجيب محفوظ وجائزة نوبل&#10;قصة بناء الهرم الأكبر"></textarea>
+<button class="primary block" style="margin-top:10px" onclick="addTopics()">إضافة المواضيع</button>
+<div id="topicsStatus" class="status"></div>
+<div id="topicsList"></div>
+</div>
+
+<div class="card">
+<h2>التنبيهات</h2>
+<p class="muted">رسالة على تيليجرام عند فشل أي نشر تلقائي. تحتاج بوتاً من BotFather ومتغيري <code>TELEGRAM_BOT_TOKEN</code> و<code>TELEGRAM_CHAT_ID</code> في Cloudflare.</p>
+<div id="notifyStatus" class="status"></div>
+<button class="secondary block" style="margin-top:10px" onclick="testNotify()">إرسال تنبيه تجريبي</button>
+</div>
+
+<div class="card">
 <h2>الصور</h2>
 <label class="switch"><input type="checkbox" id="requireImage" onchange="saveRequireImage()"> عدم النشر بدون صورة</label>
 <p class="muted" style="margin-top:14px">الصور الاحتياطية: <b id="fallbackCount">0</b> — تُستخدم عندما لا يجد البحث صورة مناسبة.</p>
@@ -1461,7 +1612,7 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 </section>
 
 </main>
-<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js?v=20261110e" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js?v=20261110f" defer></script>
 </body>
 </html>`;
 
@@ -1565,6 +1716,7 @@ export default {
      blogReady: blogConfigured(env),
      requireImage: await requireImage(env),
      autoStory: await autoStoryEnabled(env),
+     notifyReady: notifyReady(env),
      fallbackCount: (await env.DB.prepare("SELECT COUNT(*) c FROM fallback_images").first()).c,
      nextRun: nextCairoRun(new Date(), hours)
     });
@@ -1845,6 +1997,100 @@ export default {
    } catch (e) {
     return json({ ok: false, error: e.message }, 500);
    }
+  }
+
+  if (url.pathname === "/api/topics" && request.method === "GET") {
+   try {
+    await ensureAutoSchema(env.DB);
+
+    const items = (await env.DB.prepare(
+     "SELECT id,category,topic FROM custom_topics ORDER BY id DESC LIMIT 300"
+    ).all()).results || [];
+
+    const s = await env.DB.prepare(
+     "SELECT value FROM auto_settings WHERE key='use_builtin'"
+    ).first();
+
+    return json({
+     ok: true,
+     items,
+     builtinCount: TOPICS.length,
+     useBuiltin: s?.value !== "0"
+    });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/topics/add" && request.method === "POST") {
+   try {
+    await ensureAutoSchema(env.DB);
+
+    const b = await request.json();
+    const category = String(b.category || "").trim().slice(0, 60) || "محتوى";
+    const list = [...new Set(
+     (Array.isArray(b.topics) ? b.topics : [])
+      .map(x => String(x || "").trim().slice(0, 200))
+      .filter(x => x.length >= 3)
+    )].slice(0, 100);
+
+    if (!list.length) {
+     return json({ ok: false, error: "اكتب موضوعاً واحداً على الأقل (3 أحرف فأكثر)" }, 400);
+    }
+
+    let added = 0;
+
+    for (const topic of list) {
+     const r = await env.DB.prepare(
+      "INSERT OR IGNORE INTO custom_topics (category,topic) VALUES (?,?)"
+     ).bind(category, topic).run();
+     added += r.meta.changes || 0;
+    }
+
+    return json({ ok: true, added, skipped: list.length - added });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/topics/delete" && request.method === "POST") {
+   try {
+    await ensureAutoSchema(env.DB);
+    const id = Number((await request.json()).id);
+
+    await env.DB.prepare("DELETE FROM custom_topics WHERE id=?").bind(id).run();
+
+    return json({ ok: true });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/settings/builtin-topics" && request.method === "POST") {
+   try {
+    await ensureAutoSchema(env.DB);
+    const v = (await request.json()).enabled === false ? "0" : "1";
+
+    await env.DB.prepare(
+     "UPDATE auto_settings SET value=? WHERE key='use_builtin'"
+    ).bind(v).run();
+
+    return json({ ok: true, use_builtin: v === "1" });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/notify/test" && request.method === "POST") {
+   if (!notifyReady(env)) {
+    return json({ ok: false, error: "أضف TELEGRAM_BOT_TOKEN و TELEGRAM_CHAT_ID في Cloudflare أولاً" }, 400);
+   }
+
+   const ok = await notify(env, "✅ تنبيه تجريبي من لوحة أقوال: الاتصال يعمل.");
+
+   return ok
+    ? json({ ok: true })
+    : json({ ok: false, error: "رفض تيليجرام الرسالة: تأكد من التوكن ومن أنك بدأت محادثة مع البوت" }, 502);
   }
 
   if (url.pathname === "/api/blog/status" && request.method === "GET") {
