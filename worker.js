@@ -1,4 +1,4 @@
-/* أقوال — بوت النشر التلقائي على صفحة فيسبوك
+/* أقوال — بوت النشر التلقائي على صفحة فيسبوك  
  * Cloudflare Worker + D1 + Gemini + Wikimedia Commons
  *
  * المتغيرات المطلوبة (wrangler secret put):
