@@ -17,77 +17,22 @@ const GRAPH_VERSION = "v27.0";
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const DEFAULT_HOURS = [2, 6, 10, 14, 18, 22];
 
-
 const TOPICS = [
-  // تاريخ مصر
-  ["تاريخ مصر", "كيف كانت الحياة في مدينة الفسطاط؟"],
-  ["تاريخ مصر", "أسرار بناء معابد أبو سمبل"],
-  ["تاريخ مصر", "كيف كان المصريون القدماء يعالجون الأمراض؟"],
-  ["تاريخ مصر", "قصة مقياس النيل وأهميته"],
-  ["تاريخ مصر", "رحلة نقل معابد النوبة لإنقاذها"],
-
-  // التاريخ العربي والإسلامي
-  ["التاريخ العربي", "كيف نشأت مدينة بغداد المدورة؟"],
-  ["التاريخ العربي", "قصة تأسيس جامعة القرويين"],
-  ["التاريخ العربي", "الزراعة والري في الحضارة الإسلامية"],
-  ["التاريخ العربي", "البريد والاتصالات في العصر العباسي"],
-  ["التاريخ العربي", "كيف ازدهرت التجارة على طريق الحرير؟"],
-
-  // التاريخ العالمي
-  ["التاريخ العالمي", "كيف كانت الحياة في روما القديمة؟"],
-  ["التاريخ العالمي", "قصة سقوط جدار برلين"],
-  ["التاريخ العالمي", "كيف غيّر الطاعون الأسود أوروبا؟"],
-  ["التاريخ العالمي", "قصة أول رحلة ناجحة حول العالم"],
-  ["التاريخ العالمي", "كيف نشأت الألعاب الأولمبية القديمة؟"],
-
-  // شخصيات مؤثرة
-  ["شخصيات مؤثرة", "عباس بن فرناس ومحاولات الطيران"],
-  ["شخصيات مؤثرة", "الخنساء ومكانتها في الشعر العربي"],
-  ["شخصيات مؤثرة", "ابن النفيس واكتشاف الدورة الدموية الصغرى"],
-  ["شخصيات مؤثرة", "نيكولا تسلا وأفكاره التي سبقت عصره"],
-  ["شخصيات مؤثرة", "أحمد زويل ورحلة اكتشاف الفيمتو ثانية"],
-
-  // ألغاز واكتشافات
-  ["ألغاز واكتشافات", "لماذا اختفى شعب المايا من مدنه الكبرى؟"],
-  ["ألغاز واكتشافات", "سر آلية أنتيكيثيرا القديمة"],
-  ["ألغاز واكتشافات", "كيف اكتُشفت مدينة ماتشو بيتشو؟"],
-  ["ألغاز واكتشافات", "الرسائل الغامضة في مخطوطة فوينيتش"],
-  ["ألغاز واكتشافات", "أسرار خطوط نازكا في صحراء بيرو"],
-
-  // العلوم والتكنولوجيا
-  ["الثقافة والعلوم", "كيف اخترع الإنسان الساعة الميكانيكية؟"],
-  ["الثقافة والعلوم", "لماذا يطفو الجليد فوق الماء؟"],
-  ["الثقافة والعلوم", "كيف تنتقل المعلومات عبر الإنترنت؟"],
-  ["الثقافة والعلوم", "كيف تعمل البوصلة المغناطيسية؟"],
-  ["الثقافة والعلوم", "لماذا تختلف بصمات الأصابع بين البشر؟"],
-
-  // الطبيعة والكون
-  ["الطبيعة والكون", "كيف تتكون الشهب والنيازك؟"],
-  ["الطبيعة والكون", "لماذا لا تسقط الأقمار الصناعية من السماء؟"],
-  ["الطبيعة والكون", "كيف تتواصل الأشجار داخل الغابات؟"],
-  ["الطبيعة والكون", "ما سر هجرة الطيور لمسافات طويلة؟"],
-  ["الطبيعة والكون", "كيف تتشكل الشعاب المرجانية؟"],
-
-  // الحضارات والعادات
-  ["الحضارات والعادات", "من أين جاءت عادة الاحتفال بعيد الميلاد؟"],
-  ["الحضارات والعادات", "كيف كان الناس يقيسون الوقت قبل الساعات؟"],
-  ["الحضارات والعادات", "قصة نشأة الأرقام العربية وانتشارها"],
-  ["الحضارات والعادات", "كيف تطورت صناعة العملات المعدنية؟"],
-  ["الحضارات والعادات", "لماذا تختلف طرق التحية بين الشعوب؟"],
-
-  // قصص وأحداث
-  ["قصص إنسانية", "قصة الرجل الذي أنقذ آلاف الأطفال خلال الحرب"],
-  ["قصص إنسانية", "كيف ساهمت حملة تطوعية في إنقاذ قرية؟"],
-  ["أحداث غيرت العالم", "كيف غيّر اختراع الطباعة انتشار المعرفة؟"],
-  ["أحداث غيرت العالم", "قصة أول اتصال هاتفي في التاريخ"],
-  ["أحداث غيرت العالم", "كيف غيّر اكتشاف البنسلين الطب؟"],
-
-  // الاقتصاد والحياة
-  ["الاقتصاد والحياة", "كيف ظهرت البنوك في العالم؟"],
-  ["الاقتصاد والحياة", "لماذا ظهرت النقود الورقية؟"],
-  ["الاقتصاد والحياة", "كيف يعمل مبدأ العرض والطلب؟"],
-  ["الاقتصاد والحياة", "قصة نشأة التأمين وأهميته"],
-  ["الاقتصاد والحياة", "كيف تطورت وسائل النقل من العربات إلى القطارات؟"]
+ ["تاريخ مصر","الحياة اليومية في مصر القديمة"],
+ ["التاريخ العربي","بيت الحكمة وحركة الترجمة في بغداد"],
+ ["التاريخ العالمي","مدينة بومبي قبل ثوران البركان"],
+ ["شخصيات مؤثرة","ابن الهيثم وأثره في المنهج العلمي"],
+ ["ألغاز تاريخية","لغز مستعمرة رونوك"],
+ ["الثقافة والعلوم","كيف غيّر اختراع الورق مسار المعرفة؟"],
+ ["قصص إنسانية","قصة تضامن إنساني غيّرت حياة أشخاص"],
+ ["تاريخ مصر","قصة إنشاء مكتبة الإسكندرية القديمة"],
+ ["التاريخ العربي","رحلات ابن بطوطة"],
+ ["التاريخ العالمي","اكتشاف حجر رشيد وفك رموزه"],
+ ["شخصيات مؤثرة","ماري كوري ورحلتها العلمية"],
+ ["الثقافة والعلوم","كيف تعمل الذاكرة البشرية؟"],
+ ["تاريخ مصر","قصة قناة السويس"],
+ ["التاريخ العربي","الخوارزمي وتطور علم الجبر"],
+ ["الثقافة والعلوم","لماذا نرى البرق قبل سماع الرعد؟"]
 ];
 
 function json(data, status = 200) {
@@ -193,6 +138,10 @@ async function ensureAutoSchema(DB) {
  ).run();
 
  await DB.prepare(
+  "INSERT OR IGNORE INTO auto_settings (key,value) VALUES ('blog_hours','')"
+ ).run();
+
+ await DB.prepare(
   "CREATE TABLE IF NOT EXISTS auto_topics (id INTEGER PRIMARY KEY AUTOINCREMENT,topic TEXT NOT NULL UNIQUE,category TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
  ).run();
 
@@ -290,8 +239,26 @@ async function generateAutoContent(env, topic, category) {
   throw Error("GEMINI_API_KEY غير مضبوط");
  }
 
- 
-const prompt = `
+ /* عناوين آخر المنشورات لمنع التكرار */
+ let recentTopics = "";
+
+ try {
+  await ensureAutoSchema(env.DB);
+
+  const rows = (await env.DB.prepare(
+   "SELECT content FROM posts WHERE status='published' ORDER BY id DESC LIMIT 20"
+  ).all()).results || [];
+
+  recentTopics = rows
+   .map(r => String(r.content || "").split("\n").map(x => x.trim()).find(Boolean))
+   .filter(Boolean)
+   .map(t => "- " + t.slice(0, 90))
+   .join("\n");
+ } catch (e) {
+  console.log("recentTopics:", e.message);
+ }
+
+ const prompt = `
 أنت محرر محتوى ثقافي وتاريخي محترف تعمل لصالح صفحة
 فيسبوك عربية اسمها "أقوال".
 
@@ -363,7 +330,6 @@ ${recentTopics || "لا توجد بيانات سابقة"}
 أخرج المنشور النهائي فقط.
 `;
 
-
  const r = await fetch(
   "https://generativelanguage.googleapis.com/v1beta/models/" +
   (env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL) + ":generateContent",
@@ -382,7 +348,7 @@ ${recentTopics || "لا توجد بيانات سابقة"}
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
      temperature: 0.35,
-     maxOutputTokens: 350
+     maxOutputTokens: 1200
     }
    })
   }
@@ -407,7 +373,14 @@ ${recentTopics || "لا توجد بيانات سابقة"}
 /* ---------- البحث عن صورة مرتبطة بالموضوع ---------- */
 
 /* مهم: ويكيميديا تطلب User-Agent حقيقياً — ضع بريدك الفعلي هنا */
-const WIKI_UA = "AqwalBot/1.0 (https://github.com/mselnashar/Autopost; aqwal-bot@example.com)";
+let WIKI_UA = "AqwalBot/1.0 (https://github.com/mselnashar/Autopost; aqwal-bot@example.com)";
+
+/* ضع بريدك الحقيقي في متغير WIKI_CONTACT (Variables) ليقبل ويكيميديا الطلبات */
+function applyWikiUA(env) {
+ if (env.WIKI_CONTACT) {
+  WIKI_UA = "AqwalBot/1.0 (https://github.com/mselnashar/Autopost; " + env.WIKI_CONTACT + ")";
+ }
+}
 const OK_LICENSES = [
  "public domain", "cc0",
  "cc by 2.0", "cc by 3.0", "cc by 4.0",
@@ -420,6 +393,30 @@ const MIN_IMG_H = 400;
 const licenseOk = l => /^pd([\s-]|$)|public domain|^cc0|^cc[ -]by(-sa)?[ -][2-4]\.0/i.test(String(l || "").trim());
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* ويكيميديا لا تقبل إلا أحجاماً قياسية (960، 1280...) وقد ترفض أو تحدّ الطلبات */
+async function fetchWikiImage(imageUrl) {
+ const tries = [imageUrl];
+
+ if (/\/\d+px-/.test(imageUrl)) {
+  for (const w of [960, 500]) {
+   tries.push(imageUrl.replace(/\/\d+px-/, "/" + w + "px-"));
+  }
+ }
+
+ let last = 0;
+
+ for (let i = 0; i < tries.length; i++) {
+  if (i) await sleep(700);
+
+  const r = await fetch(tries[i], { headers: { "User-Agent": WIKI_UA } });
+
+  if (r.ok) return r;
+  last = r.status;
+ }
+
+ throw Error("تعذر تحميل الصورة (" + last + ")");
+}
 const cleanHtml = v => String(v || "").replace(/<[^>]*>/g, "").trim();
 
 /* عنوان تقريبي للبحث من أول سطر في النص */
@@ -505,7 +502,7 @@ async function searchCommons(query) {
  api.searchParams.set("gsrlimit", "20");
  api.searchParams.set("prop", "imageinfo");
  api.searchParams.set("iiprop", "url|extmetadata|size|mime");
- api.searchParams.set("iiurlwidth", "1200");
+ api.searchParams.set("iiurlwidth", "1280");
  api.searchParams.set("format", "json");
 
  const response = await fetch(api, { headers: { "User-Agent": WIKI_UA } });
@@ -634,13 +631,7 @@ async function saveImageToPost(env, postId, image) {
 /* ---------- النشر على فيسبوك ---------- */
 
 async function uploadPhoto(env, message, image) {
- const response = await fetch(image.url, {
-  headers: { "User-Agent": WIKI_UA }
- });
-
- if (!response.ok) {
-  throw Error("تعذر تحميل الصورة (" + response.status + ")");
- }
+ const response = await fetchWikiImage(image.url);
 
  const blob = await response.blob();
 
@@ -733,6 +724,208 @@ async function publishPost(env, content, image) {
 }
 
 
+/* ---------- المدونة (Blogger) ---------- */
+
+const BLOG_URL = "https://aqwwaal.blogspot.com/";
+let googleToken = { value: "", exp: 0 };
+
+const blogConfigured = env =>
+ !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.GOOGLE_REFRESH_TOKEN);
+
+async function getGoogleToken(env) {
+ if (!blogConfigured(env)) {
+  throw Error("إعدادات جوجل غير مكتملة (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REFRESH_TOKEN)");
+ }
+
+ if (googleToken.value && Date.now() < googleToken.exp) return googleToken.value;
+
+ const r = await fetch("https://oauth2.googleapis.com/token", {
+  method: "POST",
+  body: new URLSearchParams({
+   client_id: env.GOOGLE_CLIENT_ID,
+   client_secret: env.GOOGLE_CLIENT_SECRET,
+   refresh_token: env.GOOGLE_REFRESH_TOKEN,
+   grant_type: "refresh_token"
+  })
+ });
+ const d = await r.json();
+
+ if (!r.ok || !d.access_token) {
+  throw Error(
+   d.error === "invalid_grant"
+    ? "انتهت صلاحية رمز جوجل (invalid_grant): أنشئ رمزاً جديداً"
+    : (d.error_description || "فشل الاتصال بجوجل")
+  );
+ }
+
+ googleToken = {
+  value: d.access_token,
+  exp: Date.now() + (Number(d.expires_in || 3600) - 120) * 1000
+ };
+
+ return googleToken.value;
+}
+
+async function getBlogId(env) {
+ if (env.BLOG_ID) return String(env.BLOG_ID);
+
+ await ensureAutoSchema(env.DB);
+
+ const cached = await env.DB.prepare(
+  "SELECT value FROM auto_settings WHERE key='blog_id'"
+ ).first();
+
+ if (cached?.value) return cached.value;
+
+ const token = await getGoogleToken(env);
+ const u = new URL("https://www.googleapis.com/blogger/v3/blogs/byurl");
+ u.searchParams.set("url", env.BLOG_URL || BLOG_URL);
+
+ const r = await fetch(u, { headers: { Authorization: "Bearer " + token } });
+ const d = await r.json();
+
+ if (!r.ok || !d.id) throw Error(d.error?.message || "تعذر العثور على المدونة");
+
+ await env.DB.prepare(
+  "INSERT OR REPLACE INTO auto_settings (key,value) VALUES ('blog_id',?)"
+ ).bind(String(d.id)).run();
+
+ return String(d.id);
+}
+
+async function getBlogHours(env) {
+ await ensureAutoSchema(env.DB);
+
+ const s = await env.DB.prepare(
+  "SELECT value FROM auto_settings WHERE key='blog_hours'"
+ ).first();
+
+ return [...new Set(
+  String(s?.value ?? "").split(",").map(x => x.trim()).filter(x => x !== "")
+   .map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 23)
+ )].sort((a, b) => a - b);
+}
+
+async function geminiText(env, system, prompt, maxTokens, temperature) {
+ if (!env.GEMINI_API_KEY) throw Error("GEMINI_API_KEY غير مضبوط");
+
+ const r = await fetch(
+  "https://generativelanguage.googleapis.com/v1beta/models/" +
+  (env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL) + ":generateContent",
+  {
+   method: "POST",
+   headers: {
+    "Content-Type": "application/json",
+    "x-goog-api-key": env.GEMINI_API_KEY
+   },
+   body: JSON.stringify({
+    systemInstruction: { parts: [{ text: system }] },
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: { temperature, maxOutputTokens: maxTokens }
+   })
+  }
+ );
+ const d = await r.json();
+
+ if (!r.ok) throw Error(d.error?.message || "فشل Gemini");
+
+ const text = (d.candidates?.[0]?.content?.parts || [])
+  .map(x => x.text || "").join("").trim();
+
+ if (!text) throw Error("Gemini لم يرجع محتوى");
+
+ return text;
+}
+
+/* تنظيف HTML المقال: وسوم مسموحة فقط وبلا أي سمات */
+const BLOG_TAGS = new Set(["h2", "h3", "p", "ul", "ol", "li", "strong", "em", "blockquote", "br"]);
+
+function cleanArticleHtml(html) {
+ return String(html || "")
+  .replace(/```(?:html)?/gi, "")
+  .replace(/<!--[\s\S]*?-->/g, "")
+  .replace(/<(script|style|iframe|object|embed)[\s\S]*?<\/\1>/gi, "")
+  .replace(/<(\/?)h1\b[^>]*>/gi, "<$1h2>")
+  .replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, (m, tag) => {
+   const t = tag.toLowerCase();
+   if (!BLOG_TAGS.has(t)) return "";
+   return t === "br" ? "<br>" : (m.startsWith("</") ? `</${t}>` : `<${t}>`);
+  })
+  .trim();
+}
+
+async function generateArticle(env, topic, category) {
+ const prompt = `اكتب مقالاً معلوماتياً أصيلاً لمدونة أقوال عن: ${topic}.
+التصنيف: ${category}.
+
+الشروط:
+- من 600 إلى 900 كلمة بعربية فصيحة سهلة.
+- السطر الأول: TITLE: ثم عنوان جذاب وصادق (حتى 70 حرفاً).
+- بعده مباشرة جسم المقال بصيغة HTML فقط باستخدام الوسوم h2 وp وul وli وstrong وblockquote، دون html أو body أو h1 أو أي سمات أو أنماط.
+- مقدمة قصيرة، ثم 3 إلى 5 أقسام بعناوين h2، ثم خلاصة.
+- الدقة أولاً: لا تختلق أرقاماً أو تواريخ أو أسماء أو اقتباسات أو مصادر. إن لم تكن متأكداً من معلومة فاحذفها أو اذكر أنها محل خلاف.
+- لا تنسب أقوالاً حرفية لأشخاص إلا إذا كانت موثقة ومشهورة جداً، وتجنب قوائم الاقتباسات.
+- حياد ونبرة هادئة في الموضوعات السياسية والدينية الحساسة، ولا تمجّد العنف أو الكراهية ولا تهاجم جماعة بسبب انتمائها.
+- لا تضع روابط ولا قسم مراجع.
+- أخرج المقال فقط.`;
+
+ const text = await geminiText(
+  env,
+  "أنت كاتب محتوى تاريخي وثقافي دقيق. الأولوية لصحة المعلومة وحيادها.",
+  prompt, 6000, 0.4
+ );
+
+ const m = text.match(/^\s*TITLE:\s*(.+)$/mi);
+ const title = (m?.[1] || topic).replace(/<[^>]*>/g, "").trim().slice(0, 120);
+ const body = cleanArticleHtml(m ? text.replace(m[0], "") : text);
+
+ if (body.replace(/<[^>]*>/g, " ").split(/\s+/).filter(Boolean).length < 250) {
+  throw Error("المقال المولّد قصير جداً، أعد المحاولة");
+ }
+
+ return { title, body };
+}
+
+const escHtml = v => String(v || "").replace(/[&<>"]/g, c =>
+ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function buildBlogHtml(body, image) {
+ const pic = image?.url
+  ? `<div style="text-align:center"><img src="${escHtml(image.url)}" alt="" style="max-width:100%;height:auto;border-radius:8px"></div>\n`
+  : "";
+
+ const credit = image?.url
+  ? `\n<p><small>📷 مصدر الصورة: <a href="${escHtml(image.page)}" rel="noopener">Wikimedia Commons</a>` +
+    (image.author ? " — " + escHtml(image.author) : "") +
+    (image.license ? " — " + escHtml(image.license) : "") + "</small></p>"
+  : "";
+
+ return pic + body + credit +
+  '\n<p>تابعنا على فيسبوك: <a href="https://facebook.com/aqwwaal">facebook.com/aqwwaal</a></p>';
+}
+
+async function publishBlogPost(env, { title, html, labels }) {
+ const token = await getGoogleToken(env);
+ const blogId = await getBlogId(env);
+
+ const r = await fetch(
+  `https://www.googleapis.com/blogger/v3/blogs/${blogId}/posts`,
+  {
+   method: "POST",
+   headers: {
+    Authorization: "Bearer " + token,
+    "Content-Type": "application/json"
+   },
+   body: JSON.stringify({ kind: "blogger#post", title, content: html, labels })
+  }
+ );
+ const d = await r.json();
+
+ if (!r.ok || !d.url) throw Error(d.error?.message || "فشل النشر على المدونة");
+
+ return { id: d.id, url: d.url };
+}
+
 /* ---------- القصص والريلز ---------- */
 
 const MAX_REEL_BYTES = 60 * 1024 * 1024;
@@ -787,9 +980,7 @@ async function publishStoryBlob(env, blob) {
 }
 
 async function publishStoryFromUrl(env, imageUrl) {
- const r = await fetch(imageUrl, { headers: { "User-Agent": WIKI_UA } });
-
- if (!r.ok) throw Error("تعذر تحميل صورة القصة");
+ const r = await fetchWikiImage(imageUrl);
 
  const blob = await r.blob();
 
@@ -911,7 +1102,29 @@ async function runAutomaticPost(env, scheduledTime) {
   }
 
   /* إنشاء المحتوى */
-  const content = await generateAutoContent(env, topic, category);
+  /* مقال المدونة في الساعات المخصصة له — فشله لا يمنع منشور فيسبوك */
+  let blogNote = "";
+  let blog = null;
+
+  if ((await getBlogHours(env)).includes(slot.hour)) {
+   try {
+    const article = await generateArticle(env, topic, category);
+
+    blog = await publishBlogPost(env, {
+     title: article.title,
+     html: buildBlogHtml(article.body, image),
+     labels: ["ALL", category]
+    });
+
+    blogNote = " + مقال: " + blog.url;
+   } catch (e) {
+    blogNote = " (تعذر نشر المقال: " + String(e.message || e).slice(0, 150) + ")";
+   }
+  }
+
+  let content = await generateAutoContent(env, topic, category);
+
+  if (blog) content += "\n\n📖 اقرأ المقال كاملاً: " + blog.url;
 
   /* حفظ المسودة */
   const saved = await env.DB.prepare(
@@ -968,7 +1181,7 @@ async function runAutomaticPost(env, scheduledTime) {
 
   await env.DB.prepare(
    "UPDATE auto_runs SET status='success',post_id=?,topic=?,message=? WHERE slot_key=?"
-  ).bind(postId, topic, "تم النشر: " + fbId + storyNote, slot.key).run();
+  ).bind(postId, topic, "تم النشر: " + fbId + storyNote + blogNote, slot.key).run();
  } catch (e) {
   const msg = String(e.message || e).slice(0, 900);
 
@@ -1042,6 +1255,8 @@ textarea{min-height:260px;line-height:1.9}
 .switch input{width:auto}
 details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 .log{font-size:13px;border-bottom:1px solid var(--b);padding:8px 0;white-space:pre-wrap}
+.hours button.blog{background:#1f7a4d;color:#fff}
+#blogFrame{width:100%;height:320px;border:1px solid var(--b);border-radius:10px;background:#fff}
 #storyCanvas{display:block;width:100%;max-width:280px;margin:12px auto;border-radius:12px;background:#302052}
 #imageTestPreview{display:none;width:100%;border-radius:12px;margin-top:10px}
 </style>
@@ -1064,6 +1279,7 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 <button data-tab="home" class="active" onclick="showTab('home')">الرئيسية</button>
 <button data-tab="create" onclick="showTab('create')">إنشاء</button>
 <button data-tab="drafts" onclick="showTab('drafts')">المسودات</button>
+<button data-tab="blog" onclick="showTab('blog')">المدونة</button>
 <button data-tab="stories" onclick="showTab('stories')">القصص</button>
 <button data-tab="reels" onclick="showTab('reels')">الريلز</button>
 <button data-tab="settings" onclick="showTab('settings')">الإعدادات</button>
@@ -1140,6 +1356,41 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 </div>
 </section>
 
+<section id="tab-blog" class="tab">
+<div class="card">
+<h2>مقال للمدونة</h2>
+<p class="muted">يُنشأ مقال أصلي بصورة، تراجعه ثم تنشره على المدونة، ويمكن مشاركته على فيسبوك برابطه.</p>
+<div id="blogConn" class="status"></div>
+<label>الموضوع</label>
+<input id="blogTopic" placeholder="مثال: نجيب محفوظ">
+<label>التصنيف</label>
+<select id="blogCategory">
+<option>شخصيات مؤثرة</option><option>التاريخ العربي</option>
+<option>تاريخ مصر</option><option>التاريخ العالمي</option>
+<option>الثقافة والعلوم</option><option>ألغاز تاريخية</option>
+<option>قصص إنسانية</option>
+</select>
+<button id="blogGenBtn" class="primary block" style="margin-top:12px" onclick="blogGenerate()">إنشاء المقال</button>
+<div id="blogGenStatus" class="status"></div>
+</div>
+
+<div class="card">
+<h2>المراجعة والنشر</h2>
+<label>العنوان</label>
+<input id="blogTitle">
+<img id="blogImg" alt="" style="display:none;width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-top:10px">
+<label>نص المقال (HTML)</label>
+<textarea id="blogBody" oninput="blogPreview()" style="min-height:200px;direction:ltr;text-align:left;font-size:13px"></textarea>
+<label>معاينة</label>
+<iframe id="blogFrame" sandbox></iframe>
+<div class="row">
+<button class="secondary" onclick="blogPublish(false)">نشر على المدونة</button>
+<button class="primary" onclick="blogPublish(true)">المدونة + فيسبوك</button>
+</div>
+<div id="blogPubStatus" class="status"></div>
+</div>
+</section>
+
 <section id="tab-stories" class="tab">
 <div class="card">
 <h2>قصة بصورة</h2>
@@ -1179,9 +1430,10 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 <section id="tab-settings" class="tab">
 <div class="card">
 <h2>مواعيد النشر التلقائي</h2>
-<p class="muted">اختر الساعات (بتوقيت القاهرة). ينشر الموقع منشوراً واحداً عند بداية كل ساعة مختارة.</p>
+<p class="muted">بتوقيت القاهرة. اضغط الساعة: مرة = منشور فيسبوك، مرتان (أخضر ✍) = منشور + مقال على المدونة، ثلاث = إلغاء.</p>
 <div class="row" style="margin-top:0">
 <button class="secondary" onclick="setPreset([2,6,10,14,18,22])">6 يومياً</button>
+<button class="secondary" onclick="setPreset([2,6,10,14,18,22],[10,18])">6 + مقالان</button>
 <button class="secondary" onclick="setPreset([8,14,20])">3 يومياً</button>
 <button class="secondary" onclick="setPreset([12])">1 يومياً</button>
 </div>
@@ -1209,7 +1461,7 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 </section>
 
 </main>
-<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js?v=20261110d" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js?v=20261110e" defer></script>
 </body>
 </html>`;
 
@@ -1217,10 +1469,12 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 
 export default {
  async scheduled(event, env, ctx) {
+  applyWikiUA(env);
   ctx.waitUntil(runAutomaticPost(env, event.scheduledTime));
  },
 
  async fetch(request, env) {
+  applyWikiUA(env);
   const url = new URL(request.url);
 
   if (url.pathname === "/" && request.method === "GET") {
@@ -1307,6 +1561,8 @@ export default {
      enabled: s?.value === "1",
      logs: logs.results || [],
      hours,
+     blogHours: await getBlogHours(env),
+     blogReady: blogConfigured(env),
      requireImage: await requireImage(env),
      autoStory: await autoStoryEnabled(env),
      fallbackCount: (await env.DB.prepare("SELECT COUNT(*) c FROM fallback_images").first()).c,
@@ -1591,6 +1847,120 @@ export default {
    }
   }
 
+  if (url.pathname === "/api/blog/status" && request.method === "GET") {
+   const configured = blogConfigured(env);
+
+   if (!configured) {
+    return json({ ok: true, configured: false, connected: false });
+   }
+
+   try {
+    const token = await getGoogleToken(env);
+    const blogId = await getBlogId(env);
+
+    const r = await fetch(
+     `https://www.googleapis.com/blogger/v3/blogs/${blogId}?fields=name,url`,
+     { headers: { Authorization: "Bearer " + token } }
+    );
+    const d = await r.json();
+
+    if (!r.ok) throw Error(d.error?.message || "تعذر قراءة المدونة");
+
+    return json({ ok: true, configured: true, connected: true, name: d.name, url: d.url });
+   } catch (e) {
+    return json({ ok: true, configured: true, connected: false, error: e.message });
+   }
+  }
+
+  if (url.pathname === "/api/blog/generate" && request.method === "POST") {
+   try {
+    const b = await request.json();
+    const topic = String(b.topic || "").trim().slice(0, 300);
+    const category = String(b.category || "محتوى");
+
+    if (!topic) return json({ ok: false, error: "اكتب الموضوع أولاً" }, 400);
+
+    let image = null;
+    try {
+     image = await findTopicImage(env, topic);
+    } catch (e) {
+     if (await requireImage(env)) throw e;
+    }
+
+    const article = await generateArticle(env, topic, category);
+
+    return json({ ok: true, title: article.title, body: article.body, image });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/blog/publish" && request.method === "POST") {
+   try {
+    const b = await request.json();
+    const title = String(b.title || "").trim().slice(0, 150);
+    const body = cleanArticleHtml(b.body);
+    const category = String(b.category || "محتوى");
+    const topic = String(b.topic || "").trim().slice(0, 300) || title;
+
+    if (!title || !body) {
+     return json({ ok: false, error: "العنوان ونص المقال مطلوبان" }, 400);
+    }
+
+    /* الصورة المقبولة من ويكيميديا فقط */
+    let image = null;
+    try {
+     const iu = new URL(String(b.image?.url || ""));
+     if (iu.protocol === "https:" && iu.hostname === "upload.wikimedia.org") {
+      image = {
+       url: iu.href,
+       page: String(b.image.page || ""),
+       author: String(b.image.author || "").slice(0, 120),
+       license: String(b.image.license || "").slice(0, 60)
+      };
+     }
+    } catch (e) {}
+
+    const blog = await publishBlogPost(env, {
+     title,
+     html: buildBlogHtml(body, image),
+     labels: ["ALL", category]
+    });
+
+    let fbId = null;
+    let fbError = null;
+
+    if (b.share === true) {
+     try {
+      await ensureAutoSchema(env.DB);
+
+      const teaser = await generateAutoContent(env, topic, category);
+      const content = teaser + "\n\n📖 اقرأ المقال كاملاً: " + blog.url;
+
+      fbId = await publishPost(env, content, image);
+
+      await env.DB.prepare(
+       "INSERT INTO posts (content,post_type,status,facebook_post_id,published_at,image_url,image_page,image_author,image_license) VALUES (?,?,'published',?,CURRENT_TIMESTAMP,?,?,?,?)"
+      ).bind(
+       content, category, fbId,
+       image?.url || null, image?.page || null,
+       image?.author || null, image?.license || null
+      ).run();
+
+      await env.DB.prepare(
+       "INSERT INTO publish_logs (result,message,fb_post_id,image_url) VALUES ('success',?,?,?)"
+      ).bind(fbId, fbId, image?.url || null).run();
+     } catch (e) {
+      fbError = e.message;
+     }
+    }
+
+    return json({ ok: true, blog_url: blog.url, fb_id: fbId, fbError });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
   if (url.pathname === "/api/fallback/add" && request.method === "POST") {
    try {
     await ensureAutoSchema(env.DB);
@@ -1607,7 +1977,7 @@ export default {
     api.searchParams.set("titles", decodeURIComponent(m[1]).replace(/_/g, " "));
     api.searchParams.set("prop", "imageinfo");
     api.searchParams.set("iiprop", "url|extmetadata|size|mime");
-    api.searchParams.set("iiurlwidth", "1200");
+    api.searchParams.set("iiurlwidth", "1280");
     api.searchParams.set("format", "json");
 
     const r = await fetch(api, { headers: { "User-Agent": WIKI_UA } });
@@ -1658,9 +2028,13 @@ export default {
      return json({ ok: false, error: "مصدر الصورة غير مسموح" }, 400);
     }
 
-    const r = await fetch(u, { headers: { "User-Agent": WIKI_UA } });
+    let r;
 
-    if (!r.ok) return json({ ok: false, error: "تعذر تحميل الصورة" }, 502);
+    try {
+     r = await fetchWikiImage(u.href);
+    } catch (e) {
+     return json({ ok: false, error: e.message }, 502);
+    }
 
     return new Response(r.body, {
      headers: { "Content-Type": r.headers.get("Content-Type") || "image/jpeg" }
@@ -1781,7 +2155,22 @@ export default {
      "UPDATE auto_settings SET value=? WHERE key='hours'"
     ).bind(list.join(",")).run();
 
-    return json({ ok: true, hours: list, nextRun: nextCairoRun(new Date(), list) });
+    /* ساعات المقالات يجب أن تكون ضمن ساعات النشر */
+    const blogList = [...new Set(
+     (Array.isArray(b.blogHours) ? b.blogHours : []).map(Number)
+      .filter(n => list.includes(n))
+    )].sort((a, c) => a - c);
+
+    await env.DB.prepare(
+     "UPDATE auto_settings SET value=? WHERE key='blog_hours'"
+    ).bind(blogList.join(",")).run();
+
+    return json({
+     ok: true,
+     hours: list,
+     blogHours: blogList,
+     nextRun: nextCairoRun(new Date(), list)
+    });
    } catch (e) {
     return json({ ok: false, error: e.message }, 500);
    }
@@ -1828,11 +2217,17 @@ export default {
     const explicit = String(b.topic || "").trim().slice(0, 300);
     const topic = explicit || topicFromContent(p.content);
 
-    const image = await findTopicImage(env, topic, {
-     postId: id,
-     context: explicit ? "" : p.content,
-     skip: p.image_url ? [p.image_url] : []
-    });
+    let image;
+
+    try {
+     image = await findTopicImage(env, topic, {
+      postId: id,
+      context: explicit ? "" : p.content,
+      skip: p.image_url ? [p.image_url] : []
+     });
+    } catch (e) {
+     return json({ ok: false, error: "لا توجد صورة بديلة أخرى لهذا الموضوع" }, 404);
+    }
 
     await saveImageToPost(env, id, image);
 
