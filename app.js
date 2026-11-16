@@ -3,6 +3,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   let hours = [];
+  let blogHours = [];
 
   /* ---------- أدوات عامة ---------- */
 
@@ -92,7 +93,7 @@
   async function refreshAll() {
     if (!(await checkConnection())) return;
 
-    await Promise.all([stats(), loadDrafts(), loadAuto()]);
+    await Promise.all([stats(), loadDrafts(), loadAuto(), blogCheck(), loadTopics()]);
   }
 
   /* ---------- إنشاء المحتوى ---------- */
@@ -322,29 +323,42 @@
     grid.replaceChildren();
 
     for (let h = 0; h < 24; h++) {
-      const b = makeButton(hourLabel(h), hours.includes(h) ? "on" : "", () => {
-        hours = hours.includes(h)
-          ? hours.filter(x => x !== h)
-          : [...hours, h].sort((a, c) => a - c);
-        renderHours();
-      });
+      const state = blogHours.includes(h) ? 2 : hours.includes(h) ? 1 : 0;
+
+      const b = makeButton(
+        hourLabel(h) + (state === 2 ? " ✍" : ""),
+        state === 2 ? "blog" : state === 1 ? "on" : "",
+        () => {
+          const next = (state + 1) % 3;
+          hours = hours.filter(x => x !== h);
+          blogHours = blogHours.filter(x => x !== h);
+          if (next >= 1) hours.push(h);
+          if (next === 2) blogHours.push(h);
+          hours.sort((a, c) => a - c);
+          blogHours.sort((a, c) => a - c);
+          renderHours();
+        }
+      );
       grid.append(b);
     }
 
     $("hoursSummary").textContent = hours.length
-      ? "عدد المنشورات يومياً: " + hours.length
+      ? "منشورات يومياً: " + hours.length +
+        (blogHours.length ? " — منها مقالات: " + blogHours.length : "")
       : "لم تختر أي ساعة";
   }
 
-  function setPreset(list) {
+  function setPreset(list, blogList = []) {
     hours = [...list];
+    blogHours = [...blogList];
     renderHours();
   }
 
   async function saveHours() {
     try {
-      const data = await api("/api/auto/hours", "POST", { hours });
+      const data = await api("/api/auto/hours", "POST", { hours, blogHours });
       hours = data.hours;
+      blogHours = data.blogHours || [];
       renderHours();
       showStatus("hoursStatus", "تم حفظ المواعيد", "ok");
       await loadAuto();
@@ -377,11 +391,25 @@
         : "لا توجد مواعيد محددة";
 
       hours = data.hours || [];
+      blogHours = data.blogHours || [];
       renderHours();
+
+      if (blogHours.length && !data.blogReady) {
+        showStatus(
+          "hoursStatus",
+          "⚠️ حددت مواعيد للمقالات لكن إعدادات جوجل غير مكتملة، فلن تُنشر.",
+          "err"
+        );
+      }
 
       $("requireImage").checked = data.requireImage !== false;
       $("autoStory").checked = data.autoStory === true;
       $("fallbackCount").textContent = data.fallbackCount ?? 0;
+      showStatus(
+        "notifyStatus",
+        data.notifyReady ? "التنبيهات مفعّلة" : "التنبيهات غير مفعّلة (أضف متغيرات تيليجرام)",
+        data.notifyReady ? "ok" : ""
+      );
 
       const box = $("autoLogs");
       box.replaceChildren();
@@ -486,6 +514,217 @@
       showStatus("fallbackStatus", "تمت الإضافة (" + d.license + ")", "ok");
     } catch (error) {
       showStatus("fallbackStatus", error.message, "err");
+    }
+  }
+
+  /* ---------- المواضيع والتنبيهات ---------- */
+
+  async function loadTopics() {
+    try {
+      const d = await api("/api/topics");
+
+      $("builtinCount").textContent = d.builtinCount;
+      $("useBuiltin").checked = d.useBuiltin;
+
+      const box = $("topicsList");
+      box.replaceChildren();
+
+      if (!d.items.length) {
+        box.append(Object.assign(document.createElement("p"), {
+          className: "muted",
+          textContent: "لا توجد مواضيع مضافة بعد."
+        }));
+        return;
+      }
+
+      d.items.forEach(t => {
+        const row = document.createElement("div");
+        row.className = "log";
+        row.style.display = "flex";
+        row.style.justifyContent = "space-between";
+        row.style.alignItems = "center";
+        row.style.gap = "8px";
+
+        const text = document.createElement("span");
+        text.textContent = t.topic + " ";
+
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.textContent = t.category;
+        text.append(chip);
+
+        row.append(text, makeButton("حذف", "danger", () => deleteTopic(t.id)));
+        box.append(row);
+      });
+    } catch (error) {
+      showStatus("topicsStatus", error.message, "err");
+    }
+  }
+
+  async function addTopics() {
+    const topics = $("topicsText").value.split("\n").map(x => x.trim()).filter(Boolean);
+
+    if (!topics.length) {
+      showStatus("topicsStatus", "اكتب موضوعاً واحداً على الأقل", "err");
+      return;
+    }
+
+    try {
+      const d = await api("/api/topics/add", "POST", {
+        category: $("topicCategory").value,
+        topics
+      });
+
+      $("topicsText").value = "";
+      showStatus(
+        "topicsStatus",
+        "تمت إضافة " + d.added + (d.skipped ? " — مكرر: " + d.skipped : ""),
+        "ok"
+      );
+      await loadTopics();
+    } catch (error) {
+      showStatus("topicsStatus", error.message, "err");
+    }
+  }
+
+  async function deleteTopic(id) {
+    try {
+      await api("/api/topics/delete", "POST", { id });
+      await loadTopics();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function saveBuiltin() {
+    try {
+      await api("/api/settings/builtin-topics", "POST", {
+        enabled: $("useBuiltin").checked
+      });
+    } catch (error) {
+      alert(error.message);
+      $("useBuiltin").checked = !$("useBuiltin").checked;
+    }
+  }
+
+  async function testNotify() {
+    showStatus("notifyStatus", "جاري الإرسال...");
+
+    try {
+      await api("/api/notify/test", "POST", {});
+      showStatus("notifyStatus", "تم الإرسال. تحقق من تيليجرام.", "ok");
+    } catch (error) {
+      showStatus("notifyStatus", error.message, "err");
+    }
+  }
+
+  /* ---------- المدونة ---------- */
+
+  let blogImage = null;
+
+  async function blogCheck() {
+    try {
+      const d = await api("/api/blog/status");
+
+      if (!d.configured) {
+        showStatus("blogConn", "إعدادات جوجل غير مكتملة: أضف أسرار GOOGLE_* في Cloudflare.", "err");
+      } else if (d.connected) {
+        showStatus("blogConn", "متصل بالمدونة: " + d.name, "ok");
+      } else {
+        showStatus("blogConn", "تعذر الاتصال بالمدونة: " + d.error, "err");
+      }
+    } catch (error) {
+      showStatus("blogConn", error.message, "err");
+    }
+  }
+
+  function blogPreview() {
+    const img = blogImage?.url
+      ? '<img src="' + blogImage.url + '" style="max-width:100%;border-radius:8px">'
+      : "";
+
+    $("blogFrame").srcdoc =
+      '<html dir="rtl"><body style="font-family:Tahoma,Arial;line-height:1.9;padding:10px">' +
+      img + $("blogBody").value + "</body></html>";
+  }
+
+  async function blogGenerate() {
+    const topic = $("blogTopic").value.trim();
+
+    if (!topic) {
+      showStatus("blogGenStatus", "اكتب الموضوع أولاً", "err");
+      return;
+    }
+
+    const button = $("blogGenBtn");
+    button.disabled = true;
+    showStatus("blogGenStatus", "جاري كتابة المقال والبحث عن صورة... قد يستغرق دقيقة");
+
+    try {
+      const data = await api("/api/blog/generate", "POST", {
+        topic,
+        category: $("blogCategory").value
+      });
+
+      blogImage = data.image || null;
+      $("blogTitle").value = data.title;
+      $("blogBody").value = data.body;
+
+      const img = $("blogImg");
+      if (blogImage?.url) {
+        img.src = blogImage.url;
+        img.style.display = "block";
+      } else {
+        img.style.display = "none";
+      }
+
+      blogPreview();
+      showStatus("blogGenStatus", "تم إنشاء المقال. راجعه ثم انشره من البطاقة التالية.", "ok");
+
+    } catch (error) {
+      showStatus("blogGenStatus", error.message, "err");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function blogPublish(share) {
+    const title = $("blogTitle").value.trim();
+    const body = $("blogBody").value.trim();
+
+    if (!title || !body) {
+      showStatus("blogPubStatus", "اكتب العنوان والمقال أولاً", "err");
+      return;
+    }
+
+    if (!confirm(share
+      ? "نشر المقال على المدونة ثم مشاركته على فيسبوك؟"
+      : "نشر المقال على المدونة؟")) return;
+
+    showStatus("blogPubStatus", "جاري النشر...");
+
+    try {
+      const data = await api("/api/blog/publish", "POST", {
+        title,
+        body,
+        image: blogImage,
+        category: $("blogCategory").value,
+        topic: $("blogTopic").value.trim(),
+        share
+      });
+
+      let text = "تم النشر على المدونة:\n" + data.blog_url;
+
+      if (share) {
+        text += data.fb_id
+          ? "\nوتمت مشاركته على فيسبوك: " + data.fb_id
+          : "\n⚠️ تعذرت المشاركة على فيسبوك: " + data.fbError;
+      }
+
+      showStatus("blogPubStatus", text, share && !data.fb_id ? "err" : "ok");
+
+    } catch (error) {
+      showStatus("blogPubStatus", error.message, "err");
     }
   }
 
@@ -771,7 +1010,9 @@
     clearEditor, loadDrafts, regenerateImage, deleteDraft, publishDraft,
     loadAuto, toggleAuto, setPreset, saveHours, saveRequireImage, testImage,
     storyFindImage, storyDraw, storyPublish, saveAutoStory,
-    reelPick, reelPublish, reelCheck, addFallback
+    reelPick, reelPublish, reelCheck, addFallback,
+    blogCheck, blogPreview, blogGenerate, blogPublish,
+    addTopics, saveBuiltin, testNotify
   });
 
   document.addEventListener("DOMContentLoaded", () => {
