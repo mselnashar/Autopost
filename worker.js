@@ -1,4 +1,4 @@
-/* أقوال — بوت النشر التلقائي على صفحة فيسبوك  
+/* أقوال — بوت النشر التلقائي على صفحة فيسبوك
  * Cloudflare Worker + D1 + Gemini + Wikimedia Commons
  *
  * المتغيرات المطلوبة (wrangler secret put):
@@ -2086,11 +2086,37 @@ export default {
     return json({ ok: false, error: "أضف TELEGRAM_BOT_TOKEN و TELEGRAM_CHAT_ID في Cloudflare أولاً" }, 400);
    }
 
-   const ok = await notify(env, "✅ تنبيه تجريبي من لوحة أقوال: الاتصال يعمل.");
+   /* نستدعي تيليجرام مباشرة لنعرض سبب الرفض الحقيقي */
+   try {
+    const r = await fetch(
+     `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+     {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+       chat_id: env.TELEGRAM_CHAT_ID,
+       text: "✅ تنبيه تجريبي من لوحة أقوال: الاتصال يعمل."
+      })
+     }
+    );
+    const d = await r.json().catch(() => ({}));
 
-   return ok
-    ? json({ ok: true })
-    : json({ ok: false, error: "رفض تيليجرام الرسالة: تأكد من التوكن ومن أنك بدأت محادثة مع البوت" }, 502);
+    if (r.ok && d.ok) return json({ ok: true });
+
+    const why = String(d.description || "");
+    let hint = "";
+
+    if (/unauthorized|not found/i.test(why) && r.status === 401) hint = "التوكن خاطئ أو ناقص.";
+    else if (/chat not found/i.test(why)) hint = "رقم المحادثة خاطئ، أو لم تضغط Start على البوت.";
+    else if (/bot can't initiate|forbidden/i.test(why)) hint = "افتح محادثة مع البوت واضغط Start أولاً.";
+
+    return json({
+     ok: false,
+     error: "تيليجرام: " + (why || ("HTTP " + r.status)) + (hint ? " — " + hint : "")
+    }, 502);
+   } catch (e) {
+    return json({ ok: false, error: "تعذر الوصول إلى تيليجرام: " + e.message }, 502);
+   }
   }
 
   if (url.pathname === "/api/blog/status" && request.method === "GET") {
