@@ -15,6 +15,58 @@
 const DEFAULT_PAGE_ID = "282216368809712";
 const GRAPH_VERSION = "v27.0";
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
+/* نموذج بديل عند ازدحام الأساسي — يمكن تغييره بالمتغير GEMINI_FALLBACK_MODEL */
+const DEFAULT_FALLBACK_MODEL = "gemini-2.5-flash";
+
+/* استدعاء Gemini مع إعادة المحاولة عند الازدحام ثم الانتقال لنموذج بديل */
+async function callGemini(env, body, { attempts = 3 } = {}) {
+ if (!env.GEMINI_API_KEY) throw Error("GEMINI_API_KEY غير مضبوط");
+
+ const models = [...new Set([
+  env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+  env.GEMINI_FALLBACK_MODEL || DEFAULT_FALLBACK_MODEL
+ ])];
+
+ const errors = [];
+
+ for (const model of models) {
+  let last = "فشل Gemini";
+
+  for (let i = 0; i < attempts; i++) {
+   if (i) await sleep(i * 3000);   /* 3 ثوانٍ ثم 6 */
+
+   try {
+    const r = await fetch(
+     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+     {
+      method: "POST",
+      headers: {
+       "Content-Type": "application/json",
+       "x-goog-api-key": env.GEMINI_API_KEY
+      },
+      body: JSON.stringify(body)
+     }
+    );
+    const d = await r.json().catch(() => ({}));
+
+    if (r.ok) return d;
+
+    last = d.error?.message || ("HTTP " + r.status);
+
+    const busy = [429, 500, 502, 503, 504].includes(r.status) ||
+     /high demand|overloaded|unavailable|try again/i.test(last);
+
+    if (!busy) break;   /* خطأ دائم لهذا النموذج: انتقل للتالي */
+   } catch (e) {
+    last = String(e.message || e);
+   }
+  }
+
+  errors.push(model + ": " + last.slice(0, 160));
+ }
+
+ throw Error(errors.join(" — "));
+}
 const DEFAULT_HOURS = [2, 6, 10, 14, 18, 22];
 
 const TOPICS = [
@@ -392,35 +444,18 @@ ${recentTopics || "لا توجد بيانات سابقة"}
 أخرج المنشور النهائي فقط.
 `;
 
- const r = await fetch(
-  "https://generativelanguage.googleapis.com/v1beta/models/" +
-  (env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL) + ":generateContent",
-  {
-   method: "POST",
-   headers: {
-    "Content-Type": "application/json",
-    "x-goog-api-key": env.GEMINI_API_KEY
-   },
-   body: JSON.stringify({
-    systemInstruction: {
-     parts: [{
-      text: "أنت محرر معلوماتي دقيق. الأولوية لصحة المعلومة واختصارها."
-     }]
-    },
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: {
-     temperature: 0.35,
-     maxOutputTokens: 1200
-    }
-   })
+ const d = await callGemini(env, {
+  systemInstruction: {
+   parts: [{
+    text: "أنت محرر معلوماتي دقيق. الأولوية لصحة المعلومة واختصارها."
+   }]
+  },
+  contents: [{ role: "user", parts: [{ text: prompt }] }],
+  generationConfig: {
+   temperature: 0.35,
+   maxOutputTokens: 1200
   }
- );
-
- const d = await r.json();
-
- if (!r.ok) {
-  throw Error(d.error?.message || "فشل Gemini");
- }
+ });
 
  const result = (d.candidates?.[0]?.content?.parts || [])
   .map(x => x.text || "")
@@ -511,32 +546,17 @@ async function topicToEnglish(env, topic, context = "") {
  if (!env.GEMINI_API_KEY) return "";
 
  try {
-  const r = await fetch(
-   "https://generativelanguage.googleapis.com/v1beta/models/" +
-   (env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL) + ":generateContent",
-   {
-    method: "POST",
-    headers: {
-     "Content-Type": "application/json",
-     "x-goog-api-key": env.GEMINI_API_KEY
-    },
-    body: JSON.stringify({
-     contents: [{
-      role: "user",
-      parts: [{
-       text: context
-        ? "Read this Arabic text and return only a short English Wikimedia Commons image search phrase (2-5 words) for its main subject (a person, place, or object):\n\n" + context.slice(0, 600)
-        : "Translate this Arabic topic to a short English search phrase (2-5 words), return only the phrase: " + topic
-      }]
-     }],
-     generationConfig: { temperature: 0, maxOutputTokens: 100 }
-    })
-   }
-  );
-
-  if (!r.ok) return "";
-
-  const d = await r.json();
+  const d = await callGemini(env, {
+   contents: [{
+    role: "user",
+    parts: [{
+     text: context
+      ? "Read this Arabic text and return only a short English Wikimedia Commons image search phrase (2-5 words) for its main subject (a person, place, or object):\n\n" + context.slice(0, 600)
+      : "Translate this Arabic topic to a short English search phrase (2-5 words), return only the phrase: " + topic
+    }]
+   }],
+   generationConfig: { temperature: 0, maxOutputTokens: 100 }
+  }, { attempts: 1 });
   const en = (d.candidates?.[0]?.content?.parts || [])
    .map(x => x.text || "").join("")
    .replace(/["'\n]/g, " ").trim().slice(0, 80);
@@ -871,25 +891,11 @@ async function getBlogHours(env) {
 async function geminiText(env, system, prompt, maxTokens, temperature) {
  if (!env.GEMINI_API_KEY) throw Error("GEMINI_API_KEY غير مضبوط");
 
- const r = await fetch(
-  "https://generativelanguage.googleapis.com/v1beta/models/" +
-  (env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL) + ":generateContent",
-  {
-   method: "POST",
-   headers: {
-    "Content-Type": "application/json",
-    "x-goog-api-key": env.GEMINI_API_KEY
-   },
-   body: JSON.stringify({
-    systemInstruction: { parts: [{ text: system }] },
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: { temperature, maxOutputTokens: maxTokens }
-   })
-  }
- );
- const d = await r.json();
-
- if (!r.ok) throw Error(d.error?.message || "فشل Gemini");
+ const d = await callGemini(env, {
+  systemInstruction: { parts: [{ text: system }] },
+  contents: [{ role: "user", parts: [{ text: prompt }] }],
+  generationConfig: { temperature, maxOutputTokens: maxTokens }
+ });
 
  const text = (d.candidates?.[0]?.content?.parts || [])
   .map(x => x.text || "").join("").trim();
@@ -1755,31 +1761,16 @@ export default {
 
     const prompt = `اكتب مقالاً عربياً لصفحة أقوال. الموضوع: ${topic}. التصنيف: ${category}. الطول: ${length}. تعليمات: ${extra || "لا توجد"}. ابدأ بعنوان جذاب ومقدمة مشوقة وسرد مترابط وخاتمة تفاعلية. لا تختلق تواريخ أو اقتباسات أو مصادر. استخدم العربية الفصحى المبسطة وأخرج المقال فقط.`;
 
-    const r = await fetch(
-     "https://generativelanguage.googleapis.com/v1beta/models/" +
-     (env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL) + ":generateContent",
-     {
-      method: "POST",
-      headers: {
-       "Content-Type": "application/json",
-       "x-goog-api-key": env.GEMINI_API_KEY
-      },
-      body: JSON.stringify({
-       systemInstruction: {
-        parts: [{ text: "أنت محرر تاريخي وثقافي محترف والدقة أهم من الإثارة." }]
-       },
-       contents: [{ role: "user", parts: [{ text: prompt }] }],
-       generationConfig: {
-        temperature: 0.75,
-        maxOutputTokens: 2500
-       }
-      })
+    const d = await callGemini(env, {
+     systemInstruction: {
+      parts: [{ text: "أنت محرر تاريخي وثقافي محترف والدقة أهم من الإثارة." }]
+     },
+     contents: [{ role: "user", parts: [{ text: prompt }] }],
+     generationConfig: {
+      temperature: 0.75,
+      maxOutputTokens: 2500
      }
-    );
-
-    const d = await r.json();
-
-    if (!r.ok) throw Error(d.error?.message || "فشل Gemini");
+    });
 
     const content = (d.candidates?.[0]?.content?.parts || [])
      .map(x => x.text || "").join("").trim();
