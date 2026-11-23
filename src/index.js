@@ -16,6 +16,7 @@
 
 import { applyWikiUA } from "./images.js";
 import { runAutomaticPost } from "./auto.js";
+import { scanAnalytics } from "./analytics.js";
 import { handleRequest } from "./api.js";
 
 export default {
@@ -24,12 +25,13 @@ export default {
   applyWikiUA(env);
 
   if (env.PUBLISH_QUEUE) {
-   ctx.waitUntil(env.PUBLISH_QUEUE.send({
-    type: "auto-slot",
-    scheduledTime: event.scheduledTime
-   }));
+   ctx.waitUntil(env.PUBLISH_QUEUE.sendBatch([
+    { body: { type: "auto-slot", scheduledTime: event.scheduledTime } },
+    { body: { type: "analytics-scan" } }
+   ]));
   } else {
    ctx.waitUntil(runAutomaticPost(env, event.scheduledTime));
+   ctx.waitUntil(scanAnalytics(env));
   }
  },
 
@@ -42,6 +44,8 @@ export default {
 
    if (body.type === "auto-slot") {
     await runAutomaticPost(env, body.scheduledTime || Date.now());
+   } else if (body.type === "analytics-scan") {
+    await scanAnalytics(env);
    }
 
    message.ack();

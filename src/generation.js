@@ -13,6 +13,7 @@
  */
 import { ensureAutoSchema } from "./db.js";
 import { callGemini, geminiText } from "./gemini.js";
+import { topPerformers } from "./analytics.js";
 
 /* ---------- توليد المحتوى عبر Gemini ---------- */
 
@@ -38,6 +39,23 @@ async function generateAutoContent(env, topic, category) {
    .join("\n");
  } catch (e) {
   console.log("recentTopics:", e.message);
+ }
+
+ /* تغذية راجعة: أعلى المنشورات تفاعلاً بإحصاءات فيسبوك الفعلية */
+ let topNotes = "";
+
+ try {
+  const tops = await topPerformers(env, 5);
+
+  topNotes = tops
+   .map(t => {
+    const line = String(t.content || "").split("\n").map(x => x.trim()).find(Boolean) || "";
+    return "- " + line.slice(0, 90) + " (نقاط " + Math.round(t.score) + "، وصول " + (t.reach || 0) + ")";
+   })
+   .filter(x => x.length > 4)
+   .join("\n");
+ } catch (e) {
+  console.log("topPerformers:", e.message);
  }
 
  const prompt = `
@@ -104,6 +122,12 @@ async function generateAutoContent(env, topic, category) {
 ${recentTopics || "لا توجد بيانات سابقة"}
 
 لا تعِد إنتاج فكرة سبق نشرها حتى لو تغير العنوان.
+
+سابعاً: التعلم من تفاعل الجمهور
+المنشورات الأعلى تفاعلاً بإحصاءات حقيقية:
+${topNotes || "لا توجد بيانات أداء بعد"}
+
+حاكِ أسلوبها في العنونة والإيقاع والطول دون تكرار موضوعاتها.
 
 النتيجة المطلوبة:
 منشور عربي احترافي، دقيق، مختصر، ومفيد،

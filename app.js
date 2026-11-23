@@ -100,7 +100,7 @@
   async function refreshAll() {
     if (!(await checkConnection())) return;
 
-    await Promise.all([stats(), loadDrafts(), loadAuto(), blogCheck(), loadTopics()]);
+    await Promise.all([stats(), loadDrafts(), loadAuto(), blogCheck(), loadTopics(), loadAnalytics()]);
   }
 
   /* ---------- إنشاء المحتوى ---------- */
@@ -1011,6 +1011,94 @@
     }
   }
 
+  /* ---------- الإحصاءات ---------- */
+
+  function fmtNum(n) {
+    const v = Math.round(Number(n) || 0);
+    return v >= 10000 ? (v / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(v);
+  }
+
+  function el(tag, cls, text) {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  async function loadAnalytics() {
+    try {
+      const data = await api("/api/analytics");
+      const sum = data.summary || {};
+
+      $("anaMeasured").textContent = sum.measured ?? 0;
+      $("anaReach").textContent = fmtNum(sum.avg_reach);
+      $("anaScore").textContent = fmtNum(sum.avg_score);
+      $("anaReactions").textContent = fmtNum(sum.reactions);
+      $("anaComments").textContent = fmtNum(sum.comments);
+      $("anaShares").textContent = fmtNum(sum.shares);
+
+      const catBox = $("anaCategories");
+      catBox.replaceChildren();
+
+      const cats = data.categories || [];
+
+      if (!cats.length) {
+        catBox.textContent = "لا توجد بيانات بعد — تُجمع المقاييس كل ساعة من المنشورات المنشورة.";
+      } else {
+        cats.forEach(c => {
+          const row = el("div", "acat");
+          const name = el("span", "", (c.category || "بدون تصنيف") + " (" + c.posts + ")");
+          const val = el("span");
+          const b = el("b", "", fmtNum(c.avg_score));
+          val.appendChild(b);
+          val.appendChild(document.createTextNode(" نقاط · وصول " + fmtNum(c.avg_reach)));
+          row.appendChild(name);
+          row.appendChild(val);
+          catBox.appendChild(row);
+        });
+      }
+
+      const postBox = $("anaPosts");
+      postBox.replaceChildren();
+
+      const posts = data.recent || [];
+
+      if (!posts.length) {
+        postBox.textContent = "لا توجد مقاييس بعد.";
+      } else {
+        posts.forEach(pst => {
+          const row = el("div", "apost");
+          const title = String(pst.content || "").split("\n").map(x => x.trim()).find(Boolean) || "";
+          row.appendChild(el("div", "at", title.slice(0, 120)));
+          row.appendChild(el("div", "am",
+            "وصول " + fmtNum(pst.reach) + " · إعجاب " + fmtNum(pst.reactions) +
+            " · تعليق " + fmtNum(pst.comments) + " · مشاركة " + fmtNum(pst.shares) +
+            " · " + fmtNum(pst.score) + " نقاط"));
+          postBox.appendChild(row);
+        });
+      }
+    } catch (error) {
+      console.error("Analytics:", error);
+    }
+  }
+
+  async function refreshAnalytics() {
+    showStatus("anaStatus", "جاري جمع المقاييس من فيسبوك…");
+
+    try {
+      const data = await api("/api/analytics/refresh", "POST", {});
+      let msg = "تم فحص " + (data.scanned ?? 0) + " منشوراً";
+
+      if (data.failed) msg += " (" + data.failed + " فشل" + (data.lastError ? ": " + data.lastError : "") + ")";
+      if (data.insightsError) msg += " — الوصول غير متاح: " + data.insightsError;
+
+      showStatus("anaStatus", msg, data.failed ? "err" : "ok");
+      await loadAnalytics();
+    } catch (error) {
+      showStatus("anaStatus", error.message, "err");
+    }
+  }
+
   /* ---------- إتاحة الدوال لأزرار الصفحة ---------- */
 
   Object.assign(window, {
@@ -1020,7 +1108,7 @@
     storyFindImage, storyDraw, storyPublish, saveAutoStory,
     reelPick, reelPublish, reelCheck, addFallback,
     blogCheck, blogPreview, blogGenerate, blogPublish,
-    addTopics, saveBuiltin, testNotify
+    addTopics, saveBuiltin, testNotify, loadAnalytics, refreshAnalytics
   });
 
   document.addEventListener("DOMContentLoaded", () => {

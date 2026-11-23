@@ -72,6 +72,11 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 .hours button.blog{background:#1f7a4d;color:#fff}
 #blogFrame{width:100%;height:320px;border:1px solid var(--b);border-radius:10px;background:#fff}
 #storyCanvas{display:block;width:100%;max-width:280px;margin:12px auto;border-radius:12px;background:#302052}
+.acat{display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid var(--b);padding:8px 0;font-size:14px}
+.acat:last-child,.apost:last-child{border-bottom:0}
+.apost{border-bottom:1px solid var(--b);padding:10px 0;font-size:14px}
+.apost .at{white-space:pre-wrap;overflow-wrap:anywhere}
+.apost .am{color:var(--m);font-size:12px;margin-top:4px}
 #imageTestPreview{display:none;width:100%;border-radius:12px;margin-top:10px}
 </style>
 </head>
@@ -96,6 +101,7 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 <button data-tab="blog" onclick="showTab('blog')">المدونة</button>
 <button data-tab="stories" onclick="showTab('stories')">القصص</button>
 <button data-tab="reels" onclick="showTab('reels')">الريلز</button>
+<button data-tab="analytics" onclick="showTab('analytics')">الإحصاءات</button>
 <button data-tab="settings" onclick="showTab('settings')">الإعدادات</button>
 </div></nav>
 
@@ -241,6 +247,36 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 </div>
 </section>
 
+<section id="tab-analytics" class="tab">
+<div class="card">
+<h2>أداء المنشورات</h2>
+<p class="muted">تُجمع مقاييس فيسبوك (الوصول والتفاعل) كل ساعة لأحدث المنشورات، وتُحسّن التوليد واختيار المواضيع تلقائياً.</p>
+<div class="stats">
+<div class="stat"><strong id="anaMeasured">—</strong>منشورات مقاسة</div>
+<div class="stat"><strong id="anaReach">—</strong>متوسط الوصول</div>
+<div class="stat"><strong id="anaScore">—</strong>متوسط النقاط</div>
+</div>
+<div class="stats" style="margin-top:8px">
+<div class="stat"><strong id="anaReactions">—</strong>إعجابات</div>
+<div class="stat"><strong id="anaComments">—</strong>تعليقات</div>
+<div class="stat"><strong id="anaShares">—</strong>مشاركات</div>
+</div>
+<button class="secondary block" style="margin-top:12px" onclick="refreshAnalytics()">تحديث المقاييس الآن</button>
+<div id="anaStatus" class="status"></div>
+</div>
+
+<div class="card">
+<h2>أداء التصنيفات</h2>
+<p class="muted">النشر التلقائي يرجّح التصنيفات الأعلى تفاعلاً.</p>
+<div id="anaCategories">أدخل مفتاح الإدارة للبدء</div>
+</div>
+
+<div class="card">
+<h2>أحدث المنشورات المقاسة</h2>
+<div id="anaPosts">—</div>
+</div>
+</section>
+
 <section id="tab-settings" class="tab">
 <div class="card">
 <h2>مواعيد النشر التلقائي</h2>
@@ -302,8 +338,8 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 </section>
 
 </main>
-<!-- مثبّت على إصدار v1.0.0: عند تعديل app.js أنشئ وسم إصدار جديداً وحدّث الرابط هنا -->
-<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@v1.0.0/app.js" defer></script>
+<!-- مثبّت على إصدار v1.2.0: عند تعديل app.js أنشئ وسم إصدار جديداً وحدّث الرابط هنا -->
+<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@v1.2.0/app.js" defer></script>
 </body>
 </html>`;
 

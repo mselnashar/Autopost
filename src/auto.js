@@ -22,6 +22,31 @@ import { notify } from "./notify.js";
 
 /* ---------- اختيار موضوع النشر التلقائي ---------- */
 
+/* أوزان التصنيفات من متوسط نقاط التفاعل — التصنيف الناجح يُختار أكثر */
+async function categoryWeights(env) {
+ try {
+  const rows = (await env.DB.prepare(
+   `SELECT p.post_type AS category,AVG(a.score) AS avg_score
+    FROM post_analytics a JOIN posts p ON p.id=a.post_id
+    WHERE p.post_type IS NOT NULL GROUP BY p.post_type`
+  ).all()).results || [];
+
+  const scored = rows.filter(r => r.avg_score > 0);
+
+  if (!scored.length) return null;
+
+  const overall = scored.reduce((t, r) => t + r.avg_score, 0) / scored.length;
+
+  return new Map(scored.map(r => [
+   r.category,
+   1 + Math.min(2, Math.max(0, (r.avg_score - overall) / (overall || 1)))
+  ]));
+ } catch (e) {
+  console.log("categoryWeights:", e.message);
+  return null;
+ }
+}
+
 /* مواضيعك أولاً، ثم القائمة المدمجة (إن كانت مفعّلة) */
 async function pickTopic(env, used) {
  await ensureAutoSchema(env.DB);
@@ -45,6 +70,20 @@ async function pickTopic(env, used) {
  const freshAll = all.filter(fresh);
 
  const pool = freshCustom.length ? freshCustom : (freshAll.length ? freshAll : all);
+
+ /* اختيار موزون: التصنيفات الأعلى تفاعلاً ترجّح دون احتكار */
+ const weights = await categoryWeights(env);
+
+ if (weights) {
+  const w = pool.map(x => weights.get(x[0]) || 1);
+  const total = w.reduce((t, x) => t + x, 0);
+  let roll = Math.random() * total;
+
+  for (let i = 0; i < pool.length; i++) {
+   roll -= w[i];
+   if (roll <= 0) return pool[i];
+  }
+ }
 
  return pool[Math.floor(Math.random() * pool.length)];
 }

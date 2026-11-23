@@ -136,6 +136,22 @@ async function ensureAutoSchema(DB) {
   "CREATE TABLE IF NOT EXISTS image_logs (id INTEGER PRIMARY KEY AUTOINCREMENT,post_id INTEGER,topic TEXT,topic_en TEXT,candidates_found INTEGER,chosen_url TEXT,fallback_used INTEGER DEFAULT 0,duration_ms INTEGER,error TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
  ).run();
 
+ await DB.prepare(
+  `CREATE TABLE IF NOT EXISTS post_analytics (
+   id INTEGER PRIMARY KEY AUTOINCREMENT,
+   post_id INTEGER NOT NULL UNIQUE,
+   fb_post_id TEXT,
+   reach INTEGER DEFAULT 0,
+   impressions INTEGER DEFAULT 0,
+   engaged_users INTEGER DEFAULT 0,
+   reactions INTEGER DEFAULT 0,
+   comments INTEGER DEFAULT 0,
+   shares INTEGER DEFAULT 0,
+   score REAL DEFAULT 0,
+   fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`
+ ).run();
+
  autoReady = true;
 }
 

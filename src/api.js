@@ -24,6 +24,7 @@ import { publishPost, publishStoryBlob, publishReel, autoStoryEnabled } from "./
 import { blogConfigured, getGoogleToken, getBlogId, getBlogHours, buildBlogHtml, publishBlogPost } from "./blog.js";
 import { notifyReady } from "./notify.js";
 import { autoDraftEnabled } from "./auto.js";
+import { scanAnalytics, analyticsOverview, categoryPerformance } from "./analytics.js";
 import { html } from "./dashboard.js";
 
 export async function handleRequest(request, env) {
@@ -907,6 +908,24 @@ export async function handleRequest(request, env) {
     ).bind(v).run();
 
     return json({ ok: true, require_image: v === "1" });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/analytics" && request.method === "GET") {
+   try {
+    const data = await analyticsOverview(env);
+
+    return json({ ok: true, ...data, categories: await categoryPerformance(env) });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/analytics/refresh" && request.method === "POST") {
+   try {
+    return json({ ok: true, ...(await scanAnalytics(env, { limit: 30 })) });
    } catch (e) {
     return json({ ok: false, error: e.message }, 500);
    }
