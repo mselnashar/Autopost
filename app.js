@@ -100,7 +100,7 @@
   async function refreshAll() {
     if (!(await checkConnection())) return;
 
-    await Promise.all([stats(), loadDrafts(), loadAuto(), blogCheck(), loadTopics(), loadAnalytics()]);
+    await Promise.all([stats(), loadDrafts(), loadAuto(), blogCheck(), loadTopics(), loadAnalytics(), loadCalendar()]);
   }
 
   /* ---------- إنشاء المحتوى ---------- */
@@ -281,7 +281,21 @@
           makeButton("حذف", "danger", () => deleteDraft(post.id))
         );
 
-        card.append(title, thumb, content, actions);
+        const schedRow = document.createElement("div");
+        schedRow.className = "row";
+
+        const dt = document.createElement("input");
+        dt.type = "datetime-local";
+        dt.step = 3600;
+        dt.style.flex = "1";
+        dt.title = "موعد النشر بتوقيت القاهرة";
+
+        schedRow.append(
+          dt,
+          makeButton("جدولة", "secondary", () => scheduleDraft(post.id, dt.value))
+        );
+
+        card.append(title, thumb, content, actions, schedRow);
         box.append(card);
       });
 
@@ -320,6 +334,176 @@
     } catch (error) {
       alert(error.message);
     }
+  }
+
+  /* ---------- الجدولة والتقويم (بتوقيت القاهرة) ---------- */
+
+  function cairoPartsOf(date) {
+    return Object.fromEntries(
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Africa/Cairo", hour: "2-digit", minute: "2-digit",
+        year: "numeric", month: "2-digit", day: "2-digit", hourCycle: "h23"
+      }).formatToParts(date).map(x => [x.type, x.value])
+    );
+  }
+
+  function cairoOffsetMs(date) {
+    const p = cairoPartsOf(date);
+    return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) -
+      (date.getTime() - (date.getTime() % 60000));
+  }
+
+  function cairoLocalToUtcIso(local) {
+    const m = String(local || "").match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    if (!m) return null;
+
+    const wall = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+    const utc = new Date(wall - cairoOffsetMs(new Date(wall - cairoOffsetMs(new Date(wall)))));
+    return utc.toISOString();
+  }
+
+  function cairoDayKey(date) {
+    const p = cairoPartsOf(date);
+    return p.year + "-" + p.month + "-" + p.day;
+  }
+
+  function fmtCairoDay(date) {
+    return new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
+      timeZone: "Africa/Cairo", weekday: "long", day: "numeric", month: "short"
+    }).format(date);
+  }
+
+  function fmtCairoTime(iso) {
+    return new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
+      timeZone: "Africa/Cairo", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+    }).format(new Date(iso));
+  }
+
+  /* published_at من D1 بتنسيق UTC بلا لاحقة منطقة */
+  function parseUtc(v) {
+    return new Date(String(v).replace(" ", "T") + (String(v).includes("T") ? "" : "") + (String(v).endsWith("Z") ? "" : "Z"));
+  }
+
+  async function scheduleDraft(id, localValue) {
+    const at = cairoLocalToUtcIso(localValue);
+
+    if (!at) {
+      alert("اختر تاريخاً وساعة للنشر");
+      return;
+    }
+
+    try {
+      await api("/api/schedule-draft", "POST", { id, at });
+      await Promise.all([loadDrafts(), loadCalendar()]);
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function unscheduleDraft(id) {
+    try {
+      await api("/api/unschedule-draft", "POST", { id });
+      await Promise.all([loadDrafts(), loadCalendar()]);
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function loadCalendar() {
+    try {
+      const data = await api("/api/calendar");
+      renderScheduled(data.scheduled || []);
+      renderCalendar(data);
+    } catch (error) {
+      console.error("Calendar:", error);
+    }
+  }
+
+  function renderScheduled(items) {
+    const box = $("scheduledList");
+    if (!box) return;
+    box.replaceChildren();
+
+    if (!items.length) {
+      box.textContent = "لا توجد منشورات مجدولة — جدول أي مسودة من الأسفل.";
+      return;
+    }
+
+    items.forEach(post => {
+      const card = el("div", "post");
+      const title = String(post.content || "").split("\n").map(x => x.trim()).find(Boolean) || ("منشور #" + post.id);
+
+      card.appendChild(el("b", "", fmtCairoDay(parseUtc(post.scheduled_at)) + " — " + fmtCairoTime(post.scheduled_at)));
+      card.appendChild(el("p", "", title));
+
+      const actions = el("div", "row");
+      actions.append(
+        makeButton("نشر الآن", "primary", async () => {
+          if (!confirm("نشر هذا المنشور المجدول الآن؟")) return;
+          try {
+            const data = await api("/api/publish-draft", "POST", { id: post.id });
+            alert("تم النشر بنجاح: " + data.id);
+            await Promise.all([loadCalendar(), stats()]);
+          } catch (error) {
+            alert(error.message);
+          }
+        }),
+        makeButton("إلغاء الجدولة", "secondary", () => unscheduleDraft(post.id))
+      );
+      card.appendChild(actions);
+      box.appendChild(card);
+    });
+  }
+
+  function renderCalendar(data) {
+    const grid = $("calGrid");
+    if (!grid) return;
+    grid.replaceChildren();
+
+    const hours = data.hours || [];
+    const scheduled = data.scheduled || [];
+    const published = data.published || [];
+
+    const days = [];
+    const seen = new Set();
+    let d = new Date();
+
+    while (days.length < 7) {
+      const key = cairoDayKey(d);
+      if (!seen.has(key)) {
+        seen.add(key);
+        days.push(new Date(d));
+      }
+      d = new Date(d.getTime() + 86400000);
+    }
+
+    days.forEach(day => {
+      const key = cairoDayKey(day);
+      const cell = el("div", "calday");
+      cell.appendChild(el("b", "", fmtCairoDay(day)));
+
+      hours.forEach(h => cell.appendChild(el("span", "chip", hourLabel(h) + " تلقائي")));
+
+      scheduled
+        .filter(x => cairoDayKey(parseUtc(x.scheduled_at)) === key)
+        .forEach(x => {
+          const title = String(x.content || "").split("\n").map(t => t.trim()).find(Boolean) || ("#" + x.id);
+          const chip = el("span", "chip sch", fmtCairoTime(x.scheduled_at) + " " + title.slice(0, 25));
+          chip.title = title;
+          cell.appendChild(chip);
+        });
+
+      published
+        .filter(x => x.published_at && cairoDayKey(parseUtc(x.published_at)) === key)
+        .forEach(x => {
+          const title = String(x.content || "").split("\n").map(t => t.trim()).find(Boolean) || ("#" + x.id);
+          const chip = el("span", "chip pub", fmtCairoTime(x.published_at) + " " + title.slice(0, 25));
+          chip.title = title;
+          cell.appendChild(chip);
+        });
+
+      grid.appendChild(cell);
+    });
   }
 
   /* ---------- النشر التلقائي والمواعيد ---------- */
@@ -1108,7 +1292,8 @@
     storyFindImage, storyDraw, storyPublish, saveAutoStory,
     reelPick, reelPublish, reelCheck, addFallback,
     blogCheck, blogPreview, blogGenerate, blogPublish,
-    addTopics, saveBuiltin, testNotify, loadAnalytics, refreshAnalytics
+    addTopics, saveBuiltin, testNotify, loadAnalytics, refreshAnalytics,
+    scheduleDraft, unscheduleDraft, loadCalendar
   });
 
   document.addEventListener("DOMContentLoaded", () => {

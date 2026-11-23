@@ -11,7 +11,7 @@
  * إعدادات في جدول auto_settings:
  *   require_image       (الافتراضي 1) لا يُنشر أي منشور بدون صورة
  */
-import { sleep } from "./config.js";
+import { sleep, cleanHtml } from "./config.js";
 import { ensureAutoSchema } from "./db.js";
 import { callGemini } from "./gemini.js";
 

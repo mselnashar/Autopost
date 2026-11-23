@@ -23,7 +23,7 @@ import { WIKI_UA, applyWikiUA, fetchWikiImage, requireImage, licenseOk, findTopi
 import { publishPost, publishStoryBlob, publishReel, autoStoryEnabled } from "./facebook.js";
 import { blogConfigured, getGoogleToken, getBlogId, getBlogHours, buildBlogHtml, publishBlogPost } from "./blog.js";
 import { notifyReady } from "./notify.js";
-import { autoDraftEnabled } from "./auto.js";
+import { autoDraftEnabled, publishStoredPost } from "./auto.js";
 import { scanAnalytics, analyticsOverview, categoryPerformance } from "./analytics.js";
 import { html } from "./dashboard.js";
 
@@ -286,65 +286,100 @@ export async function handleRequest(request, env) {
   }
 
   if (url.pathname === "/api/publish-draft" && request.method === "POST") {
-   let id = 0;
-   let claimed = false;
-
    try {
-    id = Number((await request.json()).id);
+    const id = Number((await request.json()).id);
 
-    await ensureAutoSchema(env.DB);
-
-    /* حجز المسودة ذرياً لمنع النشر المزدوج */
-    const claim = await env.DB.prepare(
-     "UPDATE posts SET status='publishing' WHERE id=? AND status='draft'"
-    ).bind(id).run();
-
-    if (!claim.meta.changes) {
-     return json({ ok: false, error: "المسودة غير موجودة أو سبق نشرها" }, 404);
+    if (!Number.isInteger(id) || id < 1) {
+     return json({ ok: false, error: "رقم المسودة غير صحيح" }, 400);
     }
 
-    claimed = true;
-
-    const p = await env.DB.prepare(
-     "SELECT id,content,image_url,image_page,image_author,image_license FROM posts WHERE id=?"
-    ).bind(id).first();
-
-    let image = p.image_url
-     ? { url: p.image_url, page: p.image_page, author: p.image_author, license: p.image_license }
-     : null;
-
-    /* لا بحث جديد إن كانت الصورة محفوظة */
-    if (!image) {
-     try {
-      image = await findTopicImage(env, topicFromContent(p.content), { postId: id, context: p.content });
-      await saveImageToPost(env, id, image);
-     } catch (e) {
-      if (await requireImage(env)) throw e;
-     }
-    }
-
-    const fb = await publishPost(env, p.content, image);
-
-    await env.DB.prepare(
-     "UPDATE posts SET status='published',facebook_post_id=?,published_at=CURRENT_TIMESTAMP WHERE id=?"
-    ).bind(fb, id).run();
-
-    await env.DB.prepare(
-     "INSERT INTO publish_logs (post_id,result,message,fb_post_id,image_url) VALUES (?,'success',?,?,?)"
-    ).bind(id, fb, fb, image?.url || null).run();
+    const fb = await publishStoredPost(env, id, ["draft", "scheduled"]);
 
     return json({ ok: true, id: fb });
    } catch (e) {
-    if (claimed) {
-     await env.DB.prepare(
-      "UPDATE posts SET status='draft' WHERE id=? AND status='publishing'"
-     ).bind(id).run();
+    return json({ ok: false, error: e.message }, e.status || 500);
+   }
+  }
 
-     await env.DB.prepare(
-      "INSERT INTO publish_logs (post_id,result,message) VALUES (?,'failed',?)"
-     ).bind(id, String(e.message || e).slice(0, 900)).run();
+  if (url.pathname === "/api/schedule-draft" && request.method === "POST") {
+   try {
+    const b = await request.json();
+    const id = Number(b.id);
+    const at = new Date(String(b.at || ""));
+
+    if (!Number.isInteger(id) || id < 1) {
+     return json({ ok: false, error: "رقم المسودة غير صحيح" }, 400);
     }
 
+    if (isNaN(at.getTime())) {
+     return json({ ok: false, error: "موعد غير صالح" }, 400);
+    }
+
+    if (at.getTime() < Date.now() + 5 * 60000) {
+     return json({ ok: false, error: "الموعد يجب أن يكون في المستقبل" }, 400);
+    }
+
+    at.setSeconds(0, 0);
+
+    await ensureAutoSchema(env.DB);
+
+    const x = await env.DB.prepare(
+     "UPDATE posts SET status='scheduled',scheduled_at=? WHERE id=? AND status='draft'"
+    ).bind(at.toISOString(), id).run();
+
+    if (!x.meta.changes) {
+     return json({ ok: false, error: "المسودة غير موجودة أو سبق نشرها" }, 404);
+    }
+
+    return json({ ok: true, id, scheduled_at: at.toISOString() });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/unschedule-draft" && request.method === "POST") {
+   try {
+    const id = Number((await request.json()).id);
+
+    if (!Number.isInteger(id) || id < 1) {
+     return json({ ok: false, error: "رقم المنشور غير صحيح" }, 400);
+    }
+
+    await ensureAutoSchema(env.DB);
+
+    const x = await env.DB.prepare(
+     "UPDATE posts SET status='draft',scheduled_at=NULL WHERE id=? AND status='scheduled'"
+    ).bind(id).run();
+
+    if (!x.meta.changes) {
+     return json({ ok: false, error: "المنشور المجدول غير موجود" }, 404);
+    }
+
+    return json({ ok: true, id });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/calendar" && request.method === "GET") {
+   try {
+    await ensureAutoSchema(env.DB);
+
+    const scheduled = (await env.DB.prepare(
+     "SELECT id,content,post_type,scheduled_at,image_url FROM posts WHERE status='scheduled' ORDER BY scheduled_at LIMIT 100"
+    ).all()).results || [];
+
+    const published = (await env.DB.prepare(
+     "SELECT id,content,post_type,published_at,facebook_post_id FROM posts WHERE status='published' AND published_at >= datetime('now','-7 days') ORDER BY published_at DESC LIMIT 100"
+    ).all()).results || [];
+
+    return json({
+     ok: true,
+     hours: await getHours(env),
+     scheduled,
+     published
+    });
+   } catch (e) {
     return json({ ok: false, error: e.message }, 500);
    }
   }

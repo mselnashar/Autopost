@@ -15,7 +15,7 @@
 /* نقطة الدخول: الجدولة، قائمة انتظار النشر، وطلبات HTTP */
 
 import { applyWikiUA } from "./images.js";
-import { runAutomaticPost } from "./auto.js";
+import { runAutomaticPost, runDueScheduledPosts } from "./auto.js";
 import { scanAnalytics } from "./analytics.js";
 import { handleRequest } from "./api.js";
 
@@ -31,6 +31,7 @@ export default {
    ]));
   } else {
    ctx.waitUntil(runAutomaticPost(env, event.scheduledTime));
+   ctx.waitUntil(runDueScheduledPosts(env));
    ctx.waitUntil(scanAnalytics(env));
   }
  },
@@ -44,6 +45,7 @@ export default {
 
    if (body.type === "auto-slot") {
     await runAutomaticPost(env, body.scheduledTime || Date.now());
+    await runDueScheduledPosts(env);
    } else if (body.type === "analytics-scan") {
     await scanAnalytics(env);
    }

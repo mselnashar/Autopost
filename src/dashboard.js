@@ -77,6 +77,12 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 .apost{border-bottom:1px solid var(--b);padding:10px 0;font-size:14px}
 .apost .at{white-space:pre-wrap;overflow-wrap:anywhere}
 .apost .am{color:var(--m);font-size:12px;margin-top:4px}
+.cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.calday{background:#f8f6fb;border:1px solid var(--b);border-radius:10px;padding:8px;font-size:12px}
+.calday b{display:block;margin-bottom:4px;color:var(--d)}
+.chip{display:inline-block;background:#f0ecf6;color:var(--d);border-radius:8px;padding:2px 6px;margin:2px;font-size:11px}
+.chip.sch{background:#fdf0d5;color:#7a5a00}
+.chip.pub{background:#eaf7ef;color:var(--ok)}
 #imageTestPreview{display:none;width:100%;border-radius:12px;margin-top:10px}
 </style>
 </head>
@@ -167,6 +173,18 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 </section>
 
 <section id="tab-drafts" class="tab">
+<div class="card">
+<h2>قائمة الجدولة</h2>
+<p class="muted">منشورات مجدولة تُنشر تلقائياً في أول دورة ساعية بعد موعدها (بتوقيت القاهرة).</p>
+<div id="scheduledList">أدخل مفتاح الإدارة للبدء</div>
+</div>
+
+<div class="card">
+<h2>تقويم النشر</h2>
+<p class="muted">الأيام السبعة القادمة: المواعيد التلقائية والمنشورات المجدولة والمنشورة.</p>
+<div id="calGrid" class="cal"></div>
+</div>
+
 <div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center">
 <h2>المسودات</h2>
@@ -339,7 +357,7 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 
 </main>
 <!-- مثبّت على إصدار v1.2.0: عند تعديل app.js أنشئ وسم إصدار جديداً وحدّث الرابط هنا -->
-<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@v1.2.0/app.js" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@v1.3.0/app.js" defer></script>
 </body>
 </html>`;
 

@@ -53,7 +53,8 @@ async function ensurePostsSchema(DB) {
   ["image_url", "TEXT"],
   ["image_page", "TEXT"],
   ["image_author", "TEXT"],
-  ["image_license", "TEXT"]
+  ["image_license", "TEXT"],
+  ["scheduled_at", "TEXT"]
  ]);
 
  postsReady = true;

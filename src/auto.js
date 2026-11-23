@@ -11,11 +11,11 @@
  * إعدادات في جدول auto_settings:
  *   require_image       (الافتراضي 1) لا يُنشر أي منشور بدون صورة
  */
-import { TOPICS } from "./config.js";
+import { TOPICS, topicFromContent } from "./config.js";
 import { ensureAutoSchema } from "./db.js";
 import { cairoSlot, getHours } from "./time.js";
 import { generateAutoContent, generateArticle } from "./generation.js";
-import { findTopicImage, requireImage, isCreditFree } from "./images.js";
+import { findTopicImage, requireImage, isCreditFree, saveImageToPost } from "./images.js";
 import { getBlogHours, buildBlogHtml, publishBlogPost } from "./blog.js";
 import { publishPost, publishStoryFromUrl } from "./facebook.js";
 import { notify } from "./notify.js";
@@ -269,4 +269,103 @@ async function runAutomaticPost(env, scheduledTime) {
  }
 }
 
-export { pickTopic, autoDraftEnabled, runAutomaticPost };
+/* نشر مسودة أو منشور مجدول — منطق مشترك بين لوحة التحكم والمجدول */
+async function publishStoredPost(env, id, fromStatus = "draft") {
+ await ensureAutoSchema(env.DB);
+
+ const allowed = Array.isArray(fromStatus) ? fromStatus : [fromStatus];
+
+ const cur = await env.DB.prepare(
+  "SELECT status FROM posts WHERE id=?"
+ ).bind(id).first();
+
+ /* حجز ذري لمنع النشر المزدوج */
+ const claim = cur && allowed.includes(cur.status)
+  ? await env.DB.prepare(
+   "UPDATE posts SET status='publishing' WHERE id=? AND status=?"
+  ).bind(id, cur.status).run()
+  : { meta: { changes: 0 } };
+
+ if (!claim.meta.changes) {
+  const e = Error("المسودة غير موجودة أو سبق نشرها");
+  e.status = 404;
+  throw e;
+ }
+
+ const revertTo = cur.status;
+
+ try {
+  const p = await env.DB.prepare(
+   "SELECT id,content,image_url,image_page,image_author,image_license FROM posts WHERE id=?"
+  ).bind(id).first();
+
+  let image = p.image_url
+   ? { url: p.image_url, page: p.image_page, author: p.image_author, license: p.image_license }
+   : null;
+
+  /* لا بحث جديد إن كانت الصورة محفوظة */
+  if (!image) {
+   try {
+    image = await findTopicImage(env, topicFromContent(p.content), { postId: id, context: p.content });
+    await saveImageToPost(env, id, image);
+   } catch (e) {
+    if (await requireImage(env)) throw e;
+   }
+  }
+
+  const fb = await publishPost(env, p.content, image);
+
+  await env.DB.prepare(
+   "UPDATE posts SET status='published',facebook_post_id=?,published_at=CURRENT_TIMESTAMP,scheduled_at=NULL WHERE id=?"
+  ).bind(fb, id).run();
+
+  await env.DB.prepare(
+   "INSERT INTO publish_logs (post_id,result,message,fb_post_id,image_url) VALUES (?,'success',?,?,?)"
+  ).bind(id, fb, fb, image?.url || null).run();
+
+  return fb;
+ } catch (e) {
+  await env.DB.prepare(
+   "UPDATE posts SET status=? WHERE id=? AND status='publishing'"
+  ).bind(revertTo, id).run();
+
+  await env.DB.prepare(
+   "INSERT INTO publish_logs (post_id,result,message) VALUES (?,'failed',?)"
+  ).bind(id, String(e.message || e).slice(0, 900)).run();
+
+  throw e;
+ }
+}
+
+/* نشر المنشورات المجدولة التي حان موعدها — تُستدعى مع كل دورة كرون */
+async function runDueScheduledPosts(env, now = new Date()) {
+ await ensureAutoSchema(env.DB);
+
+ const due = (await env.DB.prepare(
+  "SELECT id FROM posts WHERE status='scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= ? ORDER BY scheduled_at LIMIT 3"
+ ).bind(now.toISOString()).all()).results || [];
+
+ let published = 0;
+
+ for (const row of due) {
+  try {
+   await publishStoredPost(env, row.id, "scheduled");
+   published++;
+  } catch (e) {
+   /* يعود مسودة ويُبلَّغ عبر تيليجرام */
+   await env.DB.prepare(
+    "UPDATE posts SET scheduled_at=NULL WHERE id=? AND status='draft'"
+   ).bind(row.id).run();
+
+   await notify(
+    env,
+    "❌ فشل نشر منشور مجدول\nرقم المنشور: " + row.id + "\nالسبب: " +
+    String(e.message || e).slice(0, 600)
+   );
+  }
+ }
+
+ return published;
+}
+
+export { pickTopic, autoDraftEnabled, runAutomaticPost, publishStoredPost, runDueScheduledPosts };
