@@ -100,7 +100,7 @@
   async function refreshAll() {
     if (!(await checkConnection())) return;
 
-    await Promise.all([stats(), loadDrafts(), loadAuto(), blogCheck(), loadTopics(), loadAnalytics(), loadCalendar()]);
+    await Promise.all([stats(), loadDrafts(), loadAuto(), blogCheck(), loadTopics(), loadAnalytics(), loadCalendar(), loadPlatforms()]);
   }
 
   /* ---------- إنشاء المحتوى ---------- */
@@ -1283,6 +1283,52 @@
     }
   }
 
+  /* ---------- منصات النشر الإضافية ---------- */
+
+  const PF_LABELS = {
+    instagram: ["pfInstagram", "pfInstagramState"],
+    telegram: ["pfTelegram", "pfTelegramState"],
+    x: ["pfX", "pfXState"]
+  };
+
+  async function loadPlatforms() {
+    try {
+      const data = await api("/api/platforms/status");
+      const platforms = data.platforms || {};
+
+      Object.entries(PF_LABELS).forEach(([key, [boxId, stateId]]) => {
+        const pf = platforms[key] || {};
+        const box = $(boxId);
+        const state = $(stateId);
+
+        if (box) box.checked = pf.enabled === true;
+        if (state) {
+          state.textContent = pf.configured ? "" : "— المفاتيح غير مضبوطة بعد";
+        }
+      });
+    } catch (error) {
+      console.error("Platforms:", error);
+    }
+  }
+
+  async function togglePlatform(key) {
+    const [boxId] = PF_LABELS[key] || [];
+    const box = $(boxId);
+
+    try {
+      const data = await api("/api/platforms/toggle", "POST", {
+        platform: key,
+        enabled: box ? box.checked : false
+      });
+
+      showStatus("pfStatus", data.enabled ? "تم التفعيل" : "تم الإيقاف", "ok");
+    } catch (error) {
+      showStatus("pfStatus", error.message, "err");
+    }
+
+    await loadPlatforms();
+  }
+
   /* ---------- إتاحة الدوال لأزرار الصفحة ---------- */
 
   Object.assign(window, {
@@ -1293,7 +1339,7 @@
     reelPick, reelPublish, reelCheck, addFallback,
     blogCheck, blogPreview, blogGenerate, blogPublish,
     addTopics, saveBuiltin, testNotify, loadAnalytics, refreshAnalytics,
-    scheduleDraft, unscheduleDraft, loadCalendar
+    scheduleDraft, unscheduleDraft, loadCalendar, loadPlatforms, togglePlatform
   });
 
   document.addEventListener("DOMContentLoaded", () => {

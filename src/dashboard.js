@@ -332,6 +332,15 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 </div>
 
 <div class="card">
+<h2>النشر على منصات أخرى</h2>
+<p class="muted">مع كل منشور فيسبوك يُنشر تلقائياً على المنصات المفعّلة. كل منصة تحتاج مفاتيحها في Cloudflare (انظر README).</p>
+<label class="switch"><input type="checkbox" id="pfInstagram" onchange="togglePlatform('instagram')"> إنستغرام <span id="pfInstagramState" class="muted"></span></label>
+<label class="switch"><input type="checkbox" id="pfTelegram" onchange="togglePlatform('telegram')"> قناة تيليجرام <span id="pfTelegramState" class="muted"></span></label>
+<label class="switch"><input type="checkbox" id="pfX" onchange="togglePlatform('x')"> إكس (تويتر) <span id="pfXState" class="muted"></span></label>
+<div id="pfStatus" class="status"></div>
+</div>
+
+<div class="card">
 <h2>التنبيهات</h2>
 <p class="muted">رسالة على تيليجرام عند فشل أي نشر تلقائي. تحتاج بوتاً من BotFather ومتغيري <code>TELEGRAM_BOT_TOKEN</code> و<code>TELEGRAM_CHAT_ID</code> في Cloudflare.</p>
 <div id="notifyStatus" class="status"></div>
@@ -357,7 +366,7 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 
 </main>
 <!-- مثبّت على إصدار v1.2.0: عند تعديل app.js أنشئ وسم إصدار جديداً وحدّث الرابط هنا -->
-<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@v1.3.0/app.js" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@v1.4.0/app.js" defer></script>
 </body>
 </html>`;
 

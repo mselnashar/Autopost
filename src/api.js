@@ -25,6 +25,7 @@ import { blogConfigured, getGoogleToken, getBlogId, getBlogHours, buildBlogHtml,
 import { notifyReady } from "./notify.js";
 import { autoDraftEnabled, publishStoredPost } from "./auto.js";
 import { scanAnalytics, analyticsOverview, categoryPerformance } from "./analytics.js";
+import { platformsStatus, publishExtraPlatforms } from "./platforms.js";
 import { html } from "./dashboard.js";
 
 export async function handleRequest(request, env) {
@@ -405,6 +406,8 @@ export async function handleRequest(request, env) {
 
     const fb = await publishPost(env, message, image);
 
+    const extras = await publishExtraPlatforms(env, message, image);
+
     await env.DB.prepare(
      "INSERT INTO posts (content,status,facebook_post_id,published_at,image_url,image_page,image_author,image_license) VALUES (?,'published',?,CURRENT_TIMESTAMP,?,?,?,?)"
     ).bind(
@@ -414,10 +417,10 @@ export async function handleRequest(request, env) {
     ).run();
 
     await env.DB.prepare(
-     "INSERT INTO publish_logs (result,message,fb_post_id,image_url) VALUES ('success',?,?,?)"
-    ).bind(fb, fb, image?.url || null).run();
+     "INSERT INTO publish_logs (result,message,fb_post_id,image_url,platforms) VALUES ('success',?,?,?,?)"
+    ).bind(fb, fb, image?.url || null, JSON.stringify(extras.results)).run();
 
-    return json({ ok: true, id: fb });
+    return json({ ok: true, id: fb, platforms: extras.results });
    } catch (e) {
     return json({ ok: false, error: e.message }, 500);
    }
@@ -961,6 +964,37 @@ export async function handleRequest(request, env) {
   if (url.pathname === "/api/analytics/refresh" && request.method === "POST") {
    try {
     return json({ ok: true, ...(await scanAnalytics(env, { limit: 30 })) });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/platforms/status" && request.method === "GET") {
+   try {
+    return json({ ok: true, platforms: await platformsStatus(env) });
+   } catch (e) {
+    return json({ ok: false, error: e.message }, 500);
+   }
+  }
+
+  if (url.pathname === "/api/platforms/toggle" && request.method === "POST") {
+   try {
+    const b = await request.json();
+    const key = String(b.platform || "");
+
+    if (!["instagram", "telegram", "x"].includes(key)) {
+     return json({ ok: false, error: "منصة غير معروفة" }, 400);
+    }
+
+    await ensureAutoSchema(env.DB);
+
+    const v = b.enabled === true ? "1" : "0";
+
+    await env.DB.prepare(
+     "UPDATE auto_settings SET value=? WHERE key=?"
+    ).bind(v, "platform_" + key).run();
+
+    return json({ ok: true, platform: key, enabled: v === "1" });
    } catch (e) {
     return json({ ok: false, error: e.message }, 500);
    }

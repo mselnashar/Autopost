@@ -19,6 +19,7 @@ import { findTopicImage, requireImage, isCreditFree, saveImageToPost } from "./i
 import { getBlogHours, buildBlogHtml, publishBlogPost } from "./blog.js";
 import { publishPost, publishStoryFromUrl } from "./facebook.js";
 import { notify } from "./notify.js";
+import { publishExtraPlatforms } from "./platforms.js";
 
 /* ---------- اختيار موضوع النشر التلقائي ---------- */
 
@@ -212,6 +213,9 @@ async function runAutomaticPost(env, scheduledTime) {
   /* النشر */
   const fbId = await publishPost(env, content, image);
 
+  /* المنصات الإضافية المفعّلة — فشلها لا يؤثر على المنشور */
+  const extras = await publishExtraPlatforms(env, content, image);
+
   /* تحديث حالة المنشور */
   await env.DB.prepare(
    "UPDATE posts SET status='published',facebook_post_id=?,published_at=CURRENT_TIMESTAMP WHERE id=?"
@@ -222,8 +226,8 @@ async function runAutomaticPost(env, scheduledTime) {
   ).bind(topic, category).run();
 
   await env.DB.prepare(
-   "INSERT INTO publish_logs (post_id,result,message,fb_post_id,image_url) VALUES (?,'success',?,?,?)"
-  ).bind(postId, fbId, fbId, image?.url || null).run();
+   "INSERT INTO publish_logs (post_id,result,message,fb_post_id,image_url,platforms) VALUES (?,'success',?,?,?,?)"
+  ).bind(postId, fbId, fbId, image?.url || null, JSON.stringify(extras.results)).run();
 
   /* قصة تلقائية (اختيارية) — فشلها لا يؤثر على المنشور */
   let storyNote = "";
@@ -242,7 +246,7 @@ async function runAutomaticPost(env, scheduledTime) {
 
   await env.DB.prepare(
    "UPDATE auto_runs SET status='success',post_id=?,topic=?,message=? WHERE slot_key=?"
-  ).bind(postId, topic, "تم النشر: " + fbId + storyNote + blogNote, slot.key).run();
+  ).bind(postId, topic, "تم النشر: " + fbId + storyNote + blogNote + extras.note, slot.key).run();
  } catch (e) {
   const msg = String(e.message || e).slice(0, 900);
 
@@ -315,13 +319,15 @@ async function publishStoredPost(env, id, fromStatus = "draft") {
 
   const fb = await publishPost(env, p.content, image);
 
+  const extras = await publishExtraPlatforms(env, p.content, image);
+
   await env.DB.prepare(
    "UPDATE posts SET status='published',facebook_post_id=?,published_at=CURRENT_TIMESTAMP,scheduled_at=NULL WHERE id=?"
   ).bind(fb, id).run();
 
   await env.DB.prepare(
-   "INSERT INTO publish_logs (post_id,result,message,fb_post_id,image_url) VALUES (?,'success',?,?,?)"
-  ).bind(id, fb, fb, image?.url || null).run();
+   "INSERT INTO publish_logs (post_id,result,message,fb_post_id,image_url,platforms) VALUES (?,'success',?,?,?,?)"
+  ).bind(id, fb, fb, image?.url || null, JSON.stringify(extras.results)).run();
 
   return fb;
  } catch (e) {

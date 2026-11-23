@@ -75,7 +75,8 @@ async function ensurePublishLogsSchema(DB) {
 
  await addMissingColumns(DB, "publish_logs", [
   ["fb_post_id", "TEXT"],
-  ["image_url", "TEXT"]
+  ["image_url", "TEXT"],
+  ["platforms", "TEXT"]
  ]);
 
  logsReady = true;
@@ -114,6 +115,12 @@ async function ensureAutoSchema(DB) {
  await DB.prepare(
   "INSERT OR IGNORE INTO auto_settings (key,value) VALUES ('use_builtin','1')"
  ).run();
+
+ for (const pf of ["platform_instagram", "platform_telegram", "platform_x"]) {
+  await DB.prepare(
+   "INSERT OR IGNORE INTO auto_settings (key,value) VALUES (?,'0')"
+  ).bind(pf).run();
+ }
 
  await DB.prepare(
   "CREATE TABLE IF NOT EXISTS custom_topics (id INTEGER PRIMARY KEY AUTOINCREMENT,category TEXT NOT NULL,topic TEXT NOT NULL UNIQUE,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
