@@ -472,10 +472,14 @@ ${recentTopics || "لا توجد بيانات سابقة"}
 /* مهم: ويكيميديا تطلب User-Agent حقيقياً — ضع بريدك الفعلي هنا */
 let WIKI_UA = "AqwalBot/1.0 (https://github.com/mselnashar/Autopost; aqwal-bot@example.com)";
 
-/* ضع بريدك الحقيقي في متغير WIKI_CONTACT (Variables) ليقبل ويكيميديا الطلبات */
+/* ضع بريدك الحقيقي في متغير WIKI_CONTACT (vars في wrangler.jsonc) — بدونه قد ترفض ويكيميديا الطلبات */
+let wikiWarned = false;
 function applyWikiUA(env) {
  if (env.WIKI_CONTACT) {
   WIKI_UA = "AqwalBot/1.0 (https://github.com/mselnashar/Autopost; " + env.WIKI_CONTACT + ")";
+ } else if (!wikiWarned) {
+  wikiWarned = true;
+  console.warn("تحذير: WIKI_CONTACT غير مضبوط — ويكيميديا قد ترفض أو تحدّ طلبات الصور. أضف بريدك الحقيقي في vars داخل wrangler.jsonc");
  }
 }
 const OK_LICENSES = [
@@ -1174,6 +1178,12 @@ async function pickTopic(env, used) {
 
 /* ---------- تشغيل النشر التلقائي ---------- */
 
+/* وضع المسودات التلقائية (اختياري): AUTO_DRAFT=1 يحفظ المنشور المولّد كمسودة للمراجعة اليدوية بدل النشر المباشر */
+function autoDraftEnabled(env) {
+ const v = String(env.AUTO_DRAFT || "").trim().toLowerCase();
+ return v === "1" || v === "true" || v === "yes";
+}
+
 async function runAutomaticPost(env, scheduledTime) {
  await ensureAutoSchema(env.DB);
 
@@ -1225,7 +1235,7 @@ async function runAutomaticPost(env, scheduledTime) {
   let blogNote = "";
   let blog = null;
 
-  if ((await getBlogHours(env)).includes(slot.hour)) {
+  if (!autoDraftEnabled(env) && (await getBlogHours(env)).includes(slot.hour)) {
    try {
     const article = await generateArticle(env, topic, category);
 
@@ -1265,6 +1275,26 @@ async function runAutomaticPost(env, scheduledTime) {
    await env.DB.prepare(
     "UPDATE image_logs SET post_id=? WHERE id=?"
    ).bind(postId, image.logId).run();
+  }
+
+  /* وضع المسودات: يكتفي بالحفظ ويترك النشر للموافقة اليدوية من لوحة التحكم */
+  if (autoDraftEnabled(env)) {
+   await env.DB.prepare(
+    "INSERT OR IGNORE INTO auto_topics (topic,category) VALUES (?,?)"
+   ).bind(topic, category).run();
+
+   await env.DB.prepare(
+    "UPDATE auto_runs SET status='success',post_id=?,topic=?,message=? WHERE slot_key=?"
+   ).bind(postId, topic, "محفوظ كمسودة بانتظار الموافقة (وضع AUTO_DRAFT)", slot.key).run();
+
+   await notify(
+    env,
+    "📝 مسودة تلقائية جديدة بانتظار المراجعة\n" +
+    "الموضوع: " + (topic || "—") + "\n" +
+    "رقم المسودة: " + postId
+   );
+
+   return;
   }
 
   /* النشر */
@@ -1618,7 +1648,8 @@ details summary{cursor:pointer;color:var(--p);font-size:14px;margin-top:12px}
 </section>
 
 </main>
-<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@main/app.js?v=20261110f" defer></script>
+<!-- مثبّت على إصدار v1.0.0: عند تعديل app.js أنشئ وسم إصدار جديداً وحدّث الرابط هنا -->
+<script src="https://cdn.jsdelivr.net/gh/mselnashar/Autopost@v1.0.0/app.js" defer></script>
 </body>
 </html>`;
 
@@ -1674,7 +1705,7 @@ export default {
      return json({ ok: false, error: d.error?.message || "Facebook API error" }, 400);
     }
 
-    return json({ ok: true, page: d.name, id: d.id });
+    return json({ ok: true, page: d.name, id: d.id, wikiContact: Boolean(env.WIKI_CONTACT) });
    } catch (e) {
     return json({ ok: false, error: e.message }, 500);
    }
@@ -1723,6 +1754,7 @@ export default {
      requireImage: await requireImage(env),
      autoStory: await autoStoryEnabled(env),
      notifyReady: notifyReady(env),
+     draftMode: autoDraftEnabled(env),
      fallbackCount: (await env.DB.prepare("SELECT COUNT(*) c FROM fallback_images").first()).c,
      nextRun: nextCairoRun(new Date(), hours)
     });

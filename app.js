@@ -70,6 +70,13 @@
     try {
       const data = await api("/api/status");
       badge.textContent = "متصل: " + data.page;
+      if (data.wikiContact === false) {
+        showStatus(
+          "autoStatus",
+          "تنبيه: متغير WIKI_CONTACT غير مضبوط — أضف بريدك الحقيقي في إعدادات العامل حتى لا ترفض ويكيميديا طلبات الصور",
+          "err"
+        );
+      }
       return true;
     } catch (error) {
       badge.textContent = "غير متصل";
@@ -373,7 +380,8 @@
 
       showStatus(
         "autoStatus",
-        data.enabled ? "النشر التلقائي مفعّل" : "النشر التلقائي متوقف",
+        (data.enabled ? "النشر التلقائي مفعّل" : "النشر التلقائي متوقف") +
+          (data.draftMode ? " — وضع المسودات: تُحفظ المنشورات للمراجعة قبل النشر" : ""),
         data.enabled ? "ok" : ""
       );
 
