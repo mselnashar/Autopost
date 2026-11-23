@@ -1,0 +1,16 @@
+{
+  "name": "aqwal-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "بوت نشر تلقائي لصفحة فيسبوك بالعربية — Cloudflare Workers + D1 + Gemini AI + Wikimedia Commons",
+  "main": "worker.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  },
+  "type": "module"
+}
