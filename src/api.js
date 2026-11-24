@@ -963,7 +963,7 @@ export async function handleRequest(request, env) {
 
   if (url.pathname === "/api/analytics/refresh" && request.method === "POST") {
    try {
-    return json({ ok: true, ...(await scanAnalytics(env, { limit: 30 })) });
+    return json({ ok: true, ...(await scanAnalytics(env, { limit: 20 })) });
    } catch (e) {
     return json({ ok: false, error: e.message }, 500);
    }
